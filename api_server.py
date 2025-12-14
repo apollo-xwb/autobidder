@@ -14,7 +14,7 @@ import time
 
 # Try to import config, but don't fail if it doesn't exist
 try:
-    from config import *
+from config import *
 except ImportError:
     # Config will be read from file instead
     pass
@@ -232,10 +232,10 @@ def read_config_file():
                     # Remove quotes for strings
                     elif value.startswith('"') and value.endswith('"'):
                         config[key] = value[1:-1]
-                        elif value.startswith("'") and value.endswith("'"):
+                    elif value.startswith("'") and value.endswith("'"):
                         config[key] = value[1:-1]
-                        # Handle numbers
-                        elif value.isdigit():
+                    # Handle numbers
+                    elif value.isdigit():
                         config[key] = int(value)
                     elif '.' in value and value.replace('.', '').replace('-', '').isdigit():
                         config[key] = float(value)
