@@ -1,0 +1,6 @@
+freelancersdk
+google-generativeai
+python-telegram-bot
+flask
+flask-cors
+psutil
