@@ -139,11 +139,6 @@ function PromptsArsenal() {
     return ((prompt.stats_replies / prompt.stats_bids) * 100).toFixed(1)
   }
 
-  const calculateWinRate = (prompt: PromptArsenal) => {
-    if (prompt.stats_bids === 0) return 0
-    return ((prompt.stats_won / prompt.stats_bids) * 100).toFixed(1)
-  }
-
   if (loading) {
     return (
       <div className="card">
