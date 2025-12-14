@@ -17,7 +17,6 @@ import PromptsArsenal from './components/PromptsArsenal'
 import SkillsManager from './components/SkillsManager'
 import BidsList from './components/BidsList'
 import PromptAnalytics from './components/PromptAnalytics'
-import AutobidderControls from './components/AutobidderControls'
 import './App.css'
 
 function AppContent() {

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { getConfig, updateConfig } from '../services/api'
-import type { Config } from '../services/api'
 import '../App.css'
 
 function SkillsManager() {

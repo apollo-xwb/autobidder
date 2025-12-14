@@ -12,7 +12,7 @@ function LogsViewer() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const logsContainerRef = useRef<HTMLDivElement>(null)
   const userScrolledRef = useRef(false)
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const scrollTimeoutRef = useRef<number | null>(null)
 
   const loadLogs = useCallback(async () => {
     try {

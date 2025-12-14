@@ -255,7 +255,6 @@ function PromptsArsenal() {
           <div className="arsenal-grid">
             {prompts.map((prompt) => {
               const replyRate = calculateReplyRate(prompt)
-              const winRate = calculateWinRate(prompt)
               const isActive = prompt.is_active
 
               return (
@@ -349,7 +348,7 @@ function PromptsArsenal() {
                     </div>
                     <div className="stat-item">
                       <div className="stat-label">REPLY RATE</div>
-                      <div className="stat-value" style={{ color: parseFloat(replyRate) >= 20 ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
+                      <div className="stat-value" style={{ color: parseFloat(String(replyRate)) >= 20 ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
                         {replyRate}%
                       </div>
                     </div>
