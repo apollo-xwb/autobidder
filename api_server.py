@@ -14,7 +14,7 @@ import time
 
 # Try to import config, but don't fail if it doesn't exist
 try:
-from config import *
+    from config import *
 except ImportError:
     # Config will be read from file instead
     pass
