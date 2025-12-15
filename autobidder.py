@@ -2,6 +2,7 @@
 import time
 import sqlite3
 import sys
+import os
 import asyncio
 import threading
 import logging
@@ -12,7 +13,29 @@ from freelancersdk.session import Session
 from freelancersdk.resources.projects import place_project_bid
 import google.generativeai as genai
 from telegram import Bot
-from config import *
+
+# Try to import from config.py, fallback to environment variables
+try:
+    from config import *
+except ImportError:
+    # Read from environment variables (for deployment)
+    OAUTH_TOKEN = os.environ.get('OAUTH_TOKEN', '')
+    YOUR_BIDDER_ID = int(os.environ.get('YOUR_BIDDER_ID', '0'))
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+    TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
+    TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
+    MIN_BUDGET = float(os.environ.get('MIN_BUDGET', '200'))
+    POLL_INTERVAL = int(os.environ.get('POLL_INTERVAL', '30'))
+    BID_AMOUNT_MULTIPLIER = float(os.environ.get('BID_AMOUNT_MULTIPLIER', '1.05'))
+    DEFAULT_DELIVERY_DAYS = int(os.environ.get('DEFAULT_DELIVERY_DAYS', '6'))
+    MAX_PROJECT_AGE_MINUTES = int(os.environ.get('MAX_PROJECT_AGE_MINUTES', '10'))
+    PROMPT_SELECTION_MODE = os.environ.get('PROMPT_SELECTION_MODE', 'dynamic')
+    # Parse MY_SKILLS from comma-separated string
+    skills_str = os.environ.get('MY_SKILLS', '')
+    if skills_str:
+        MY_SKILLS = [s.strip() for s in skills_str.split(',') if s.strip()]
+    else:
+        MY_SKILLS = []
 
 # === LOGGING SETUP ===
 LOG_FILE = 'autobidder.log'

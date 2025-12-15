@@ -1577,6 +1577,29 @@ def get_logs():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+def read_process_output(process, log_file):
+    """Read process output in background and write to log file"""
+    try:
+        with open(log_file, 'a', encoding='utf-8') as f:
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+                line = line.rstrip()
+                f.write(line + '\n')
+                f.flush()
+                # Also add to in-memory logs
+                global autobidder_logs
+                autobidder_logs.append(line)
+                if len(autobidder_logs) > MAX_LOG_LINES:
+                    autobidder_logs.pop(0)
+    except Exception as e:
+        # Write error to log file
+        try:
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"Error reading process output: {e}\n")
+        except:
+            pass
+
 @app.route('/autobidder/start', methods=['POST'])
 @app.route('/api/autobidder/start', methods=['POST'])  # Also accept /api prefix
 def start_autobidder():
@@ -1591,17 +1614,49 @@ def start_autobidder():
         with open(LOG_FILE, 'w', encoding='utf-8') as f:
             f.write('')
         
+        # Start process with output redirected to log file
+        log_handle = open(LOG_FILE, 'a', encoding='utf-8')
         autobidder_process = subprocess.Popen(
             ['python', 'autobidder.py'],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-            bufsize=1
+            bufsize=1,
+            env=os.environ.copy()  # Pass environment variables to child process
         )
+        
+        # Start background thread to read output
+        output_thread = threading.Thread(
+            target=read_process_output,
+            args=(autobidder_process, LOG_FILE),
+            daemon=True
+        )
+        output_thread.start()
+        
+        # Check if process started successfully (wait a tiny bit to catch immediate failures)
+        time.sleep(0.1)
+        if autobidder_process.poll() is not None:
+            # Process exited immediately - read error
+            exit_code = autobidder_process.returncode
+            error_msg = f"Process exited immediately with code {exit_code}"
+            # Try to read any error output
+            try:
+                with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                    error_output = f.read()
+                    if error_output:
+                        error_msg += f": {error_output[-500:]}"  # Last 500 chars
+            except:
+                pass
+            autobidder_running = False
+            autobidder_process = None
+            return jsonify({'success': False, 'error': error_msg}), 500
+        
         autobidder_running = True
         return jsonify({'success': True, 'message': 'Autobidder started'})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        import traceback
+        error_trace = traceback.format_exc()
+        return jsonify({'success': False, 'error': str(e), 'traceback': error_trace}), 500
 
 @app.route('/autobidder/stop', methods=['POST'])
 @app.route('/api/autobidder/stop', methods=['POST'])  # Also accept /api prefix
