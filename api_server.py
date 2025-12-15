@@ -385,6 +385,7 @@ def write_prompt_template(template):
     return False
 
 @app.route('/config', methods=['GET'])
+@app.route('/api/config', methods=['GET'])  # Also accept /api prefix
 def get_config():
     """Get current configuration"""
     try:
@@ -405,6 +406,7 @@ def get_config():
         return jsonify({'error': error_msg, 'traceback': traceback_str if app.debug else None}), 500
 
 @app.route('/config', methods=['POST'])
+@app.route('/api/config', methods=['POST'])  # Also accept /api prefix
 def update_config():
     """Update configuration"""
     try:
@@ -432,6 +434,7 @@ def update_config():
         }), 500
 
 @app.route('/prompts', methods=['GET'])
+@app.route('/api/prompts', methods=['GET'])  # Also accept /api prefix
 def get_prompts():
     """Get all prompts from arsenal"""
     try:
@@ -469,6 +472,7 @@ def get_prompts():
         return jsonify({'error': error_msg, 'traceback': traceback_str if app.debug else None}), 500
 
 @app.route('/prompts', methods=['POST'])
+@app.route('/api/prompts', methods=['POST'])  # Also accept /api prefix
 def create_prompt():
     """Create a new prompt in arsenal"""
     try:
@@ -495,6 +499,7 @@ def create_prompt():
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/prompts/<int:prompt_id>', methods=['PUT'])
+@app.route('/api/prompts/<int:prompt_id>', methods=['PUT'])  # Also accept /api prefix
 def update_prompt_arsenal(prompt_id):
     """Update a prompt in arsenal"""
     try:
@@ -534,6 +539,7 @@ def update_prompt_arsenal(prompt_id):
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/prompts/<int:prompt_id>/activate', methods=['POST'])
+@app.route('/api/prompts/<int:prompt_id>/activate', methods=['POST'])  # Also accept /api prefix
 def activate_prompt(prompt_id):
     """Activate a prompt (set as active and update autobidder.py)"""
     try:
@@ -568,6 +574,7 @@ def activate_prompt(prompt_id):
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/prompts/<int:prompt_id>', methods=['DELETE'])
+@app.route('/api/prompts/<int:prompt_id>', methods=['DELETE'])  # Also accept /api prefix
 def delete_prompt(prompt_id):
     """Delete a prompt from arsenal"""
     try:
@@ -583,6 +590,7 @@ def delete_prompt(prompt_id):
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/prompt', methods=['GET'])
+@app.route('/api/prompt', methods=['GET'])  # Also accept /api prefix
 def get_prompt():
     """Get current active prompt (for backward compatibility)"""
     try:
@@ -615,6 +623,7 @@ def init_prompt_metadata_table():
     conn.close()
 
 @app.route('/prompt', methods=['POST'])
+@app.route('/api/prompt', methods=['POST'])  # Also accept /api prefix
 def update_prompt():
     """Update current active prompt (for backward compatibility)"""
     import hashlib
