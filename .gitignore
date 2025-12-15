@@ -43,8 +43,8 @@ frontend/.vite/
 mobile/node_modules/
 mobile/.expo/
 
-# Config (optional - uncomment if you don't want to commit config.py)
-# config.py
+# Config - DO NOT COMMIT config.py (contains sensitive API keys)
+config.py
 
 # Render
 .render/
