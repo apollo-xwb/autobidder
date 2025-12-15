@@ -232,10 +232,10 @@ def read_config_file():
                     # Remove quotes for strings
                     elif value.startswith('"') and value.endswith('"'):
                         config[key] = value[1:-1]
-                        elif value.startswith("'") and value.endswith("'"):
+                    elif value.startswith("'") and value.endswith("'"):
                         config[key] = value[1:-1]
-                        # Handle numbers
-                        elif value.isdigit():
+                    # Handle numbers
+                    elif value.isdigit():
                         config[key] = int(value)
                     elif '.' in value and value.replace('.', '').replace('-', '').isdigit():
                         config[key] = float(value)
@@ -388,14 +388,14 @@ def write_prompt_template(template):
 def get_config():
     """Get current configuration"""
     try:
-    config = read_config_file()
+        config = read_config_file()
         # Ensure MY_SKILLS is always a list
         if 'MY_SKILLS' not in config or not isinstance(config.get('MY_SKILLS'), list):
             config['MY_SKILLS'] = []
         # Ensure PROMPT_SELECTION_MODE has a default
         if 'PROMPT_SELECTION_MODE' not in config:
             config['PROMPT_SELECTION_MODE'] = 'dynamic'
-    return jsonify(config)
+        return jsonify(config)
     except Exception as e:
         import traceback
         error_msg = str(e)
@@ -408,15 +408,15 @@ def get_config():
 def update_config():
     """Update configuration"""
     try:
-    data = request.json
+        data = request.json
         if not data:
             return jsonify({'success': False, 'error': 'No data provided'}), 400
         
-    current_config = read_config_file()
-    current_config.update(data)
+        current_config = read_config_file()
+        current_config.update(data)
         
-    if write_config_file(current_config):
-        return jsonify({'success': True, 'config': current_config})
+        if write_config_file(current_config):
+            return jsonify({'success': True, 'config': current_config})
         else:
             return jsonify({'success': False, 'error': 'Failed to write config file'}), 500
     except Exception as e:
@@ -597,7 +597,7 @@ def get_prompt():
             return jsonify({'prompt': result[2], 'template': result[2], 'name': result[0], 'description': result[1]})
         else:
             # Fallback to reading from autobidder.py
-    template = read_prompt_template()
+            template = read_prompt_template()
             if not template:
                 template = "You are an elite full-stack developer..."
             return jsonify({'prompt': template, 'template': template, 'name': None})
@@ -1602,17 +1602,17 @@ def stop_autobidder():
                     is_running = False
                 
                 if is_running:
-    try:
-        autobidder_process.terminate()
+                    try:
+                        autobidder_process.terminate()
                         try:
-        autobidder_process.wait(timeout=5)
+                            autobidder_process.wait(timeout=5)
                             stopped = True
                         except subprocess.TimeoutExpired:
                             try:
                                 autobidder_process.kill()
                                 autobidder_process.wait()
                                 stopped = True
-    except Exception as e:
+                            except Exception as e:
                                 error_details.append(f"Kill failed: {str(e)}")
                         except Exception as e:
                             error_details.append(f"Wait failed: {str(e)}")
@@ -1621,11 +1621,11 @@ def stop_autobidder():
                         # Try kill as fallback
                         try:
                             if autobidder_process:
-            autobidder_process.kill()
+                                autobidder_process.kill()
                                 try:
                                     autobidder_process.wait(timeout=2)
                                     stopped = True
-        except:
+                                except:
                                     stopped = True
                         except Exception as e2:
                             error_details.append(f"Kill fallback failed: {str(e2)}")
