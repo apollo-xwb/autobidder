@@ -943,6 +943,12 @@ def get_bids():
         conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
         c = conn.cursor()
         
+        # Ensure table exists
+        c.execute('''CREATE TABLE IF NOT EXISTS bids 
+                     (project_id INTEGER PRIMARY KEY, title TEXT, bid_amount REAL, 
+                      status TEXT DEFAULT 'applied', outsource_cost REAL, profit REAL, applied_at TEXT, bid_message TEXT, reply_count INTEGER DEFAULT 0)''')
+        conn.commit()
+        
         # Migrate: Add columns if they don't exist
         try:
             c.execute("ALTER TABLE bids ADD COLUMN bid_message TEXT")
@@ -951,6 +957,16 @@ def get_bids():
             pass  # Column already exists
         try:
             c.execute("ALTER TABLE bids ADD COLUMN currency_code TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            c.execute("ALTER TABLE bids ADD COLUMN prompt_id INTEGER")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            c.execute("ALTER TABLE bids ADD COLUMN prompt_hash TEXT")
             conn.commit()
         except sqlite3.OperationalError:
             pass  # Column already exists
@@ -1345,6 +1361,7 @@ def sync_prompt_stats():
         print(f"Error syncing prompt stats: {e}")
 
 @app.route('/analytics/prompts', methods=['GET'])
+@app.route('/api/analytics/prompts', methods=['GET'])  # Also accept /api prefix
 def get_prompt_analytics():
     """Get prompt performance analytics - includes all prompts, even with no bids"""
     try:
