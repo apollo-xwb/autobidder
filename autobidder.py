@@ -194,6 +194,7 @@ def get_user_skills():
     return _user_skills_cache
 
 def get_projects():
+    """Fetch projects from Freelancer API. Returns (projects_list, is_rate_limited)"""
     try:
         session = Session(oauth_token=OAUTH_TOKEN)
         url = 'https://www.freelancer.com/api/projects/0.1/projects/active/'
@@ -210,10 +211,16 @@ def get_projects():
         projects = data.get('result', {}).get('projects', [])
         total_active = data.get('result', {}).get('total_count', 'unknown')
         log(f"Fetched {len(projects)} newest active projects (total on platform: {total_active})")
-        return projects
+        return projects, False  # Return projects and rate_limit status
     except Exception as e:
-        log(f"Search error: {e}")
-        return []
+        error_str = str(e)
+        # Check if it's a 429 rate limit error
+        if '429' in error_str or 'TOO MANY REQUESTS' in error_str.upper():
+            log(f"Rate limited (429): {error_str}")
+            return [], True  # Return empty list and rate_limit=True
+        else:
+            log(f"Search error: {e}")
+            return [], False  # Other error, not rate limited
 
 def convert_to_usd(amount, currency_code):
     """Convert amount from given currency to USD"""
@@ -679,6 +686,13 @@ log("=" * 60)
 # Initialize user skills at startup
 get_user_skills()
 log("")
+
+# Rate limiting state
+rate_limit_backoff = 0  # Current backoff multiplier
+consecutive_rate_limits = 0  # Count of consecutive rate limits
+MAX_BACKOFF_MULTIPLIER = 20  # Maximum backoff: 20 * POLL_INTERVAL
+BACKOFF_RESET_THRESHOLD = 3  # Reset backoff after this many successful requests
+
 try:
     while True:
         current_time = time.time()
@@ -695,40 +709,64 @@ try:
         new_projects = 0
         already_seen = 0
         
-        projects = get_projects()
-        for p in projects:
-            pid = p['id']
-            if pid not in seen:
-                new_projects += 1
-                if good_project(p):
-                    matching_count += 1
-                    log(f"✓ MATCHING PROJECT: {pid} - {p['title'][:50]}")
-                    # Run bid in background thread to not block scanning
-                    threading.Thread(target=bid, args=(p,), daemon=True).start()
+        projects, is_rate_limited = get_projects()
+        
+        # Handle rate limiting with exponential backoff
+        if is_rate_limited:
+            consecutive_rate_limits += 1
+            # Exponential backoff: 2^consecutive_rate_limits, capped at MAX_BACKOFF_MULTIPLIER
+            rate_limit_backoff = min(2 ** consecutive_rate_limits, MAX_BACKOFF_MULTIPLIER)
+            sleep_time = POLL_INTERVAL * rate_limit_backoff
+            log(f"⚠️  Rate limited! Backing off: {sleep_time} seconds (backoff multiplier: {rate_limit_backoff}x)")
+        else:
+            # Successful request - reset backoff if we had consecutive failures
+            if consecutive_rate_limits > 0:
+                consecutive_rate_limits = max(0, consecutive_rate_limits - BACKOFF_RESET_THRESHOLD)
+                if consecutive_rate_limits == 0:
+                    rate_limit_backoff = 0
+                    log("✅ Rate limit cleared, returning to normal polling")
+        
+        # Process projects only if we got them (not rate limited)
+        if projects:
+            for p in projects:
+                pid = p['id']
+                if pid not in seen:
+                    new_projects += 1
+                    if good_project(p):
+                        matching_count += 1
+                        log(f"✓ MATCHING PROJECT: {pid} - {p['title'][:50]}")
+                        # Run bid in background thread to not block scanning
+                        threading.Thread(target=bid, args=(p,), daemon=True).start()
+                    else:
+                        skipped_count += 1
+                    seen[pid] = current_time
                 else:
-                    skipped_count += 1
-                seen[pid] = current_time
-            else:
-                already_seen += 1
-                
-            # Limit seen dict size to prevent memory issues
-            if len(seen) > MAX_SEEN_SIZE:
-                # Remove oldest 20% of entries
-                sorted_seen = sorted(seen.items(), key=lambda x: x[1])
-                to_remove = sorted_seen[:int(MAX_SEEN_SIZE * 0.2)]
-                for pid, _ in to_remove:
-                    del seen[pid]
-                log(f"Trimmed seen set to {len(seen)} projects (removed {len(to_remove)} oldest)")
+                    already_seen += 1
+                    
+                # Limit seen dict size to prevent memory issues
+                if len(seen) > MAX_SEEN_SIZE:
+                    # Remove oldest 20% of entries
+                    sorted_seen = sorted(seen.items(), key=lambda x: x[1])
+                    to_remove = sorted_seen[:int(MAX_SEEN_SIZE * 0.2)]
+                    for pid, _ in to_remove:
+                        del seen[pid]
+                    log(f"Trimmed seen set to {len(seen)} projects (removed {len(to_remove)} oldest)")
+            
+            if new_projects == 0:
+                log(f"No new projects found ({already_seen} already seen)")
+            elif matching_count > 0:
+                log(f"Found {new_projects} new projects: {matching_count} matched, {skipped_count} skipped")
+            elif skipped_count > 0:
+                log(f"Found {new_projects} new projects: {matching_count} matched, {skipped_count} skipped")
         
-        if new_projects == 0:
-            log(f"No new projects found ({already_seen} already seen)")
-        elif matching_count > 0:
-            log(f"Found {new_projects} new projects: {matching_count} matched, {skipped_count} skipped")
-        elif skipped_count > 0:
-            log(f"Found {new_projects} new projects: {matching_count} matched, {skipped_count} skipped")
+        # Calculate sleep time based on rate limiting
+        if is_rate_limited:
+            sleep_time = POLL_INTERVAL * rate_limit_backoff
+        else:
+            sleep_time = POLL_INTERVAL
         
-        log(f"Sleeping for {POLL_INTERVAL} seconds...")
-        time.sleep(POLL_INTERVAL)
+        log(f"Sleeping for {sleep_time} seconds...")
+        time.sleep(sleep_time)
 except KeyboardInterrupt:
     log("=" * 60)
     log("AUTOBIDDER STOPPED by user")
