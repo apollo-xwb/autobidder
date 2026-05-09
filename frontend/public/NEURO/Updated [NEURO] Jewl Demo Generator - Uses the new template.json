@@ -1,0 +1,855 @@
+{
+  "name": "Updated [NEURO] Jewl Demo Generator - Uses the new template",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT lead_id, email, company_name, city, current_url, outreach_email_used\nFROM leads\nWHERE lead_id = '{{ $json.body.lead_id }}'\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "bebeda99-8628-44b9-b9c4-3245128bc28d",
+      "name": "Fetch Outreach Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -3712,
+        112
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-leads",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "75ca6d32-f5d4-4400-ab53-f83b05e4a5f5",
+      "name": "Any Leads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3504,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/apify~website-content-crawler/run-sync-get-dataset-items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"startUrls\": [{\"url\": \"{{ $('Fetch Outreach Lead').item.json.current_url }}\"}],\n  \"crawlerType\": \"playwright:adaptive\",\n  \"maxCrawlPages\": 3,\n  \"saveHtml\": false,\n  \"saveMarkdown\": true\n}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "a1e70e45-eebe-47b4-8f9d-586a32de03c1",
+      "name": "Apify Scrape Website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3248,
+        96
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/compass~crawler-google-places/run-sync-get-dataset-items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"searchStringsArray\": [\"{{ $('Fetch Outreach Lead').item.json.company_name }} {{ $('Fetch Outreach Lead').item.json.city }}\"],\n  \"maxCrawledPlacesPerSearch\": 1,\n  \"scrapeReviews\": true,\n  \"maxReviews\": 5,\n  \"scrapeImages\": false\n}\n",
+        "options": {
+          "timeout": 100000
+        }
+      },
+      "id": "8410f774-57a1-4552-bfac-3c23a257726d",
+      "name": "Apify Scrape Google Maps",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2960,
+        96
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from both Apify nodes\nconst websiteData = $('Apify Scrape Website').first()?.json || {};\nconst gmapsData = $input.first()?.json || {};\n\n// Handle array responses from Apify\nconst website = Array.isArray(websiteData) ? websiteData[0] : websiteData;\nconst gmaps = Array.isArray(gmapsData) ? gmapsData[0] : gmapsData;\n\nreturn [{\n  json: {\n    website: website,\n    gmaps: gmaps\n  }\n}];"
+      },
+      "id": "62ffe8e8-3f86-41f4-beb7-1d738176d519",
+      "name": "Combine Scraped Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2720,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pageText   = $('Combine Scraped Data').first().json.website?.markdown || $('Combine Scraped Data').first().json.website?.text || '';\nconst gmaps      = $('Combine Scraped Data').first().json.gmaps || {};\nconst lead       = $('Fetch Outreach Lead').first().json;\n\nconst systemPrompt = `You are a business intelligence analyst specializing in the jewelry retail industry.\nAnalyze the business data and return ONLY a valid JSON object with these exact fields:\n\n{\n  \"business_name\": \"string — official business name\",\n  \"tagline\": \"string — inferred or created professional tagline for the business\",\n  \"phone\": \"string — primary phone number\",\n  \"city\": \"string — city\",\n  \"state\": \"string — state or region\",\n  \"country\": \"string — country code e.g. US\",\n  \"currency_code\": \"string — ISO 4217 e.g. USD\",\n  \"locale\": \"string — e.g. en-US\",\n  \"logo_url\": \"string — logo URL if found in page, else empty string\",\n  \"primary_color\": \"string — hex color extracted or inferred from brand, e.g. #1a1a2e\",\n  \"star_rating\": number,\n  \"review_count\": number,\n  \"review_quotes\": [\"string\", \"string\"] — up to 2 short genuine-sounding customer quotes based on the business type,\n  \"services\": [\"string\"] — list of services/products offered,\n  \"specialty\": \"string — specific jewelry niche e.g. engagement rings, estate jewelry, custom design\",\n  \"opening_hours_summary\": \"string — e.g. Mon-Sat 10am-6pm\",\n  \"estimated_weekly_calls\": number — realistic estimate: small store=40, medium=70, large=120,\n  \"estimated_answer_rate\": number — decimal 0-1, typical is 0.68,\n  \"avg_transaction_value\": number — average purchase in USD for this type of business,\n  \"website_quality_score\": number — 1-10 based on the scraped content quality/professionalism,\n  \"pain_points\": [\"string\"] — 2-3 specific operational pain points for this business,\n  \"recovery_plan_headline\": \"string — compelling headline for Fourcee value proposition for this business\",\n  \"recovery_plan_body\": \"string — 2-3 sentences about how Fourcee specifically helps this business type\"\n}\n\nReturn ONLY the JSON object, no markdown, no explanation.`;\n\nconst payload = JSON.stringify({\n  model: 'llama-3.3-70b-versatile',\n  messages: [\n    { role: 'system', content: systemPrompt },\n    { role: 'user', content: `Business name: ${lead.company_name}\\nCity: ${lead.city}\\nWebsite: ${lead.current_url}\\n\\nGoogle Maps data:\\nRating: ${gmaps.totalScore || 'N/A'}\\nReviews: ${gmaps.reviewsCount || 'N/A'}\\nPhone: ${gmaps.phone || 'N/A'}\\nAddress: ${gmaps.address || 'N/A'}\\n\\nWebsite content (first 6000 chars):\\n${pageText.slice(0, 6000)}` }\n  ],\n  temperature: 0.3,\n  max_tokens: 2000\n});\n\nconst response = await helpers.httpRequest({\n  method: 'POST',\n  url: 'https://api.groq.com/openai/v1/chat/completions',\n  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer REDACTED' },\n  body: payload,\n  returnFullResponse: false\n});\n\nlet result = {};\ntry {\n  const raw = response.choices[0].message.content.replace(/```json|```/g, '').replace(/^`+|`+$/g, '').trim();\n  result = JSON.parse(raw);\n} catch(e) { console.log('Groq parse error:', e.message); }\n\nreturn [{ json: { response: result } }];"
+      },
+      "id": "bc4f117b-5b97-4448-8f7e-3f55d7ed8e58",
+      "name": "Groq Business Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2512,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Transform to fourcee-template content.json (exact schema match) ─────────\nlet scraped = {};\ntry {\n  const response = $input.first().json.response;\n  scraped = typeof response === 'string' ? JSON.parse(response) : response;\n} catch (e) { scraped = {}; }\n\nconst lead    = $('Fetch Outreach Lead').first().json;\nconst gmaps   = $('Combine Scraped Data').first().json.gmaps || {};\nconst now     = new Date();\nconst dateStr = now.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });\nconst reportId = 'AUDIT-' + Date.now().toString(36).toUpperCase();\n\n// ── Core business values ────────────────────────────────────────────────────\nconst bizName    = scraped.business_name  || lead.company_name;\nconst city       = scraped.city           || lead.city || '';\nconst state      = scraped.state          || '';\nconst country    = scraped.country        || 'US';\nconst currency   = scraped.currency_code  || 'USD';\nconst symbol     = currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'EUR' ? '€' : '$';\nconst locale     = scraped.locale         || 'en-US';\nconst phone      = scraped.phone          || gmaps.phone || '';\nconst logoUrl    = scraped.logo_url       || gmaps.imageUrl || '';\nconst starRating = scraped.star_rating    || gmaps.totalScore   || 4.2;\nconst reviewCount= scraped.review_count   || gmaps.reviewsCount || 42;\n\n// ── Call model (Min/Max ranges as template expects) ─────────────────────────\nconst callsMid   = scraped.estimated_weekly_calls || 65;\nconst callsMin   = Math.round(callsMid * 0.8);\nconst callsMax   = Math.round(callsMid * 1.2);\nconst arMid      = scraped.estimated_answer_rate  || 0.68;\nconst arMin      = Math.round(arMid * 100 * 0.9);\nconst arMax      = Math.round(arMid * 100 * 1.1);\nconst missedMin  = Math.round(callsMin * (1 - arMax/100));\nconst missedMax  = Math.round(callsMax * (1 - arMin/100));\nconst answMin    = callsMin - missedMax;\nconst answMax    = callsMax - missedMin;\nconst avgTx      = scraped.avg_transaction_value || 450;\nconst convRate   = 0.20;\n\n// ── Revenue model ────────────────────────────────────────────────────────────\nconst monthlyLossMin = Math.round(missedMin * 4.33 * avgTx * convRate);\nconst monthlyLossMax = Math.round(missedMax * 4.33 * avgTx * convRate);\nconst monthlyLossMid = Math.round((monthlyLossMin + monthlyLossMax) / 2);\nconst sixMonthLeak   = monthlyLossMid * 6;\n// lineSeries: 6 cumulative monthly totals (what template expects — array of numbers)\nconst lineSeries = [1,2,3,4,5,6].map(i => monthlyLossMid * i);\n\n// ── App name ────────────────────────────────────────────────────────────────\nconst slug    = bizName.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,30);\nconst appName = ('fourcee-audit-' + city.toLowerCase().replace(/\\s+/g,'-').slice(0,15) + '-' + slug).slice(0,60);\n\n// ── Build content.json matching EXACT template schema ───────────────────────\nconst content = {\n  auditMeta: {\n    generatedDate:        dateStr,\n    reportId,\n    confidentialityLabel: 'Confidential audit brief',\n    preparedForLabel:     'Specially Prepared for',\n    currencyCode:         currency,\n    currencySymbol:       symbol,\n    locale\n  },\n  business: {\n    name:         bizName,\n    location:     [city, state].filter(Boolean).join(', '),\n    logoUrl:      logoUrl,\n    industry:     'retail',\n    storeCount:   1,\n    teamSize:     null,\n    website:      lead.current_url,\n    primaryPhone: phone\n  },\n  reviews: {\n    rating:       starRating,\n    count:        reviewCount,\n    starsDisplay: '★'.repeat(Math.round(starRating)) + '☆'.repeat(5 - Math.round(starRating)),\n    quote1:       (scraped.review_quotes || [])[0] || 'Exceptional quality and service!',\n    quote2:       (scraped.review_quotes || [])[1] || 'Highly recommend to anyone looking for fine jewelry.',\n    themes:       ['Quality', 'Service', 'Selection']\n  },\n  traffic: {\n    sources: [\n      { label: 'Google Search',    percent: 45, colorKey: 'search'  },\n      { label: 'Website / Direct', percent: 35, colorKey: 'website' },\n      { label: 'Other',            percent: 20, colorKey: 'direct'  }\n    ]\n  },\n  callModel: {\n    inboundCallsPerWeekMin:   callsMin,\n    inboundCallsPerWeekMax:   callsMax,\n    answerRateMin:            arMin,\n    answerRateMax:            arMax,\n    missedCallsPerWeekMin:    missedMin,\n    missedCallsPerWeekMax:    missedMax,\n    answeredCallsPerWeekMin:  Math.max(0, answMin),\n    answeredCallsPerWeekMax:  Math.max(0, answMax),\n    missedCallTypeSplit: [\n      { label: 'Product Inquiries',  percent: 50 },\n      { label: 'Custom Requests',    percent: 30 },\n      { label: 'Appointments',       percent: 20 }\n    ]\n  },\n  revenueModel: {\n    monthlyLossMin,\n    monthlyLossMax,\n    monthlyLossMidpoint:      monthlyLossMid,\n    sixMonthCumulativeLeak:   sixMonthLeak,\n    lineSeries\n  },\n  breakdown: {\n    rows: [\n      {\n        callType:         'Product Inquiries',\n        weeklyMissedMin:  Math.round(missedMin * 0.5),\n        weeklyMissedMax:  Math.round(missedMax * 0.5),\n        monthlyImpactMin: Math.round(monthlyLossMin * 0.5),\n        monthlyImpactMax: Math.round(monthlyLossMax * 0.5)\n      },\n      {\n        callType:         'Custom Requests',\n        weeklyMissedMin:  Math.round(missedMin * 0.3),\n        weeklyMissedMax:  Math.round(missedMax * 0.3),\n        monthlyImpactMin: Math.round(monthlyLossMin * 0.3),\n        monthlyImpactMax: Math.round(monthlyLossMax * 0.3)\n      },\n      {\n        callType:         'Appointments',\n        weeklyMissedMin:  Math.round(missedMin * 0.2),\n        weeklyMissedMax:  Math.round(missedMax * 0.2),\n        monthlyImpactMin: Math.round(monthlyLossMin * 0.2),\n        monthlyImpactMax: Math.round(monthlyLossMax * 0.2)\n      }\n    ],\n    riskBadge: 'High-intent calls at risk',\n    opportunityCards: [\n      { title: 'High-value inquiries', subtitle: 'Pricing & availability', valueNote: 'Highest revenue potential', impactTier: '$$', mobileWidthPercent: 100 },\n      { title: 'Custom requests',      subtitle: 'Complex orders',         valueNote: 'Mid-to-high revenue',       impactTier: '$',  mobileWidthPercent: 88 },\n      { title: 'Booking requests',     subtitle: 'Appointments',           valueNote: 'Steady value',              impactTier: '$',  mobileWidthPercent: 76 }\n    ]\n  },\n  comparison: {\n    currentAnsweredRate:  Math.round(arMid * 100),\n    currentMonthlyLoss:   monthlyLossMid,\n    projectedAnsweredRate: 98,\n    projectedMonthlyLoss:  0,\n    comparisonFootnote:   'Based on jewelry industry benchmarks for AI-assisted call handling.'\n  },\n  projection90d: {\n    answerRateProjected:       '98-100%',\n    monthlyRecoveredProjected: symbol + Math.round(monthlyLossMin * 0.8).toLocaleString() + ' - ' + symbol + Math.round(monthlyLossMax * 0.96).toLocaleString(),\n    paybackPeriodProjected:    '30-45 days',\n    barWidths: {\n      answerRate:       'w-[99%]',\n      monthlyRecovered: 'w-[82%]',\n      paybackPeriod:    'w-[68%]'\n    }\n  },\n  recoveryPlan: {\n    headline:          scraped.recovery_plan_headline || 'Recommended Recovery Plan for ' + bizName,\n    body:              scraped.recovery_plan_body     || 'Fourcee\\'s AI Assistant answers every call to ' + bizName + ' — 24/7 — so you never miss a high-value inquiry again.',\n    capabilities:      ['24/7 AI answering', 'Lead qualification', 'Appointment booking', 'Order intake'],\n    supportingMediaUrl: '/assets/placeholder.gif'\n  },\n  liveDemo: {\n    ctaLabel:           'Try Fourcee on your phone',\n    helperCopy:         'No charge. ~60-90s.',\n    phoneCountryDefault: country === 'US' ? '+1' : '+1',\n    demoDurationHint:   '~60-90s'\n  },\n  branding: {\n    theme: {\n      primary:      scraped.primary_color || '#d4af37',\n      secondary:    '#1e293b',\n      accentGold:   '#f5e6c8',\n      accentSilver: '#94a3b8'\n    },\n    logoWordmarkUrl: '/assets/logo.png',\n    clientLogoUrl:   logoUrl || '/assets/logo.png',\n    fontHeading:     'Inter',\n    fontBody:        'DM Sans'\n  },\n  compliance: {\n    dataSourceLine:  'Data sourced from public data + industry benchmarks.',\n    disclaimerShort: 'Estimates based on benchmarks. Results may vary.',\n    disclaimerLong:  'All estimates for ' + bizName + ' are illustrative, based on public data and jewelry industry benchmarks.',\n    allowedClaims:   ['Benchmark data', 'Public analysis', 'Pattern modeling']\n  }\n};\n\nconst contentStr = JSON.stringify(content, null, 2);\nconst contentB64 = Buffer.from(contentStr).toString('base64');\n\nreturn [{ json: {\n  company_name:   bizName,\n  app_name:       appName,\n  content_base64: contentB64,\n  email:          lead.email,\n  demo_url:       null\n} }];"
+      },
+      "id": "f51b70a9-a8e2-41a4-9d56-1fb336b58d6f",
+      "name": "Transform to Audit JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2304,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/neurotechnologica/fourcee-template/generate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "owner",
+              "value": "neurotechnologica"
+            },
+            {
+              "name": "name",
+              "value": "={{ $json.app_name }}"
+            },
+            {
+              "name": "description",
+              "value": "=Fourcee audit for {{ $json.company_name }}"
+            },
+            {
+              "name": "private",
+              "value": false
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "8f9b0db4-7fbb-48af-9c41-4b1426aea9fb",
+      "name": "Clone fourcee-template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2112,
+        80
+      ],
+      "credentials": {
+        "githubApi": {
+          "id": "XnLXKSoGDssmWPSQ",
+          "name": "neuro GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vercel.com/v13/deployments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer REDACTED"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"{{ $('Transform to Audit JSON').item.json.app_name }}\",\n  \"gitSource\": {\n    \"type\": \"github\",\n    \"repoId\": {{ $('Clone fourcee-template').item.json.id }},\n    \"ref\": \"main\"\n  },\n  \"projectSettings\": {\n    \"framework\": \"vite\",\n    \"buildCommand\": \"npm run build\",\n    \"outputDirectory\": \"dist\",\n    \"installCommand\": \"npm install\"\n  },\n  \"target\": \"production\",\n  \"public\": true\n}\n",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "64d72816-4639-47d6-a6f5-d2b5acf91424",
+      "name": "Deploy to Vercel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1344,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  status = 'demo_generated'::lead_status,\n  demo_url = '{{ $('Get Vercel Production URL').first().json.production_url }}',\n  updated_at = NOW()\nWHERE lead_id = '{{ $('Fetch Outreach Lead').first().json.lead_id }}';",
+        "options": {}
+      },
+      "id": "0b28b789-cd84-4e6d-8c53-cc05477be800",
+      "name": "Update Lead Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -976,
+        80
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET status = 'outreach' WHERE lead_id = '{{ $('Fetch Outreach Lead').item.json.lead_id }}';",
+        "options": {}
+      },
+      "id": "df010b93-9399-4502-b2b3-2235047b8ab1",
+      "name": "Revert on Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -2688,
+        272
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 20
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1520,
+        80
+      ],
+      "id": "71f59f3a-e703-449c-b7ff-ee6064913dfc",
+      "name": "Wait for github",
+      "webhookId": "8205050a-4995-439e-8feb-cedada690b9e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// UPDATED CODE FOR \"Push content.json\" NODE\n// This handles updating the existing content.json file (requires SHA)\n\nconst transform = $('Transform to Audit JSON').item.json;\nconst GITHUB_TOKEN = 'REDACTED';\n\nconsole.log('=== PUSH CONTENT.JSON WITH SHA ===');\nconsole.log('App Name:', transform.app_name);\nconsole.log('Company Name:', transform.company_name);\n\n// Validate we have the data\nif (!transform.app_name) {\n  throw new Error('app_name is missing from Transform output');\n}\n\nif (!transform.content_base64) {\n  throw new Error('content_base64 is missing from Transform output');\n}\n\nconst url = `https://api.github.com/repos/neurotechnologica/${transform.app_name}/contents/public/content.json`;\n\n// Step 1: Get the current file's SHA\nconsole.log('Step 1: Getting existing file SHA...');\nlet sha = null;\n\ntry {\n  const getResponse = await helpers.httpRequest({\n    method: 'GET',\n    url: url,\n    headers: {\n      'Accept': 'application/vnd.github+json',\n      'Authorization': `Bearer ${GITHUB_TOKEN}`\n    },\n    returnFullResponse: false\n  });\n  \n  sha = getResponse.sha;\n  console.log('Found existing file with SHA:', sha);\n  \n} catch (error) {\n  console.log('File does not exist yet (this is OK for new repos)');\n}\n\n// Step 2: Push the file (with SHA if it exists)\nconsole.log('Step 2: Pushing content.json...');\n\nconst body = {\n  message: `Add audit data for ${transform.company_name}`,\n  content: transform.content_base64\n};\n\n// Add SHA if file exists\nif (sha) {\n  body.sha = sha;\n  console.log('Including SHA for update');\n} else {\n  console.log('No SHA needed (creating new file)');\n}\n\ntry {\n  const response = await helpers.httpRequest({\n    method: 'PUT',\n    url: url,\n    headers: {\n      'Accept': 'application/vnd.github+json',\n      'Authorization': `Bearer ${GITHUB_TOKEN}`,\n      'Content-Type': 'application/json'\n    },\n    body: JSON.stringify(body),\n    returnFullResponse: true\n  });\n  \n  console.log('=== PUSH SUCCESS ===');\n  console.log('HTTP Status:', response.statusCode);\n  console.log('File Path:', response.body.content?.path);\n  console.log('File Size:', response.body.content?.size);\n  console.log('New SHA:', response.body.content?.sha);\n  console.log('Commit Message:', response.body.commit?.message);\n  \n  return [{ json: response.body }];\n  \n} catch (error) {\n  console.log('=== PUSH ERROR ===');\n  console.log('Error message:', error.message);\n  console.log('Error status:', error.statusCode);\n  console.log('Error details:', JSON.stringify(error.response?.body, null, 2));\n  \n  throw new Error(`GitHub API Error: ${error.message}`);\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1696,
+        80
+      ],
+      "id": "fab7db8c-c1fb-438c-8afe-b4027304a609",
+      "name": "push content to github"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1904,
+        80
+      ],
+      "id": "9ee6f752-f2c1-4a4c-ac0c-30ca6c74b9b2",
+      "name": "Wait",
+      "webhookId": "c301df13-29eb-4693-acac-c065fa24c268"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ae0a5a25-5238-4779-8efd-d9b98188fc45",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3920,
+        112
+      ],
+      "id": "6da37a75-a1bf-4e6f-b973-9c5f49db9f93",
+      "name": "Webhook",
+      "webhookId": "ae0a5a25-5238-4779-8efd-d9b98188fc45"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Transform to Audit JSON').first().json;\nconst fetchedLead = $('Fetch Outreach Lead').first().json;\nconst demoUrl = $('Get Vercel Production URL').first().json.production_url;\nconst companyName = lead.company_name;\nconst email = fetchedLead.email;\nconst fromEmail = fetchedLead.outreach_email_used || 'emily@fourceelabs.com';\n\n// Map fromEmail to senderIndex for SMTP routing\nconst senderMap = {\n  'emily@fourceelabs.com': 0,\n  'emily@thefourcee.com': 1,\n  'emily@fourceeapp.com': 2,\n  'emily@fourceehq.com': 3\n};\nconst senderIndex = senderMap[fromEmail] ?? 0;\n\nconst htmlBody = `\n<div style=\"font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#333;line-height:1.7;\">\n  <p>Hi there,</p>\n  <p>Great news — we've put together your personalised business audit for <strong>${companyName}</strong>.</p>\n  <p>It shows exactly where your business is leaving money on the table and what a modern digital presence could look like for you.</p>\n  <div style=\"text-align:center;margin:32px 0;\">\n    <a href=\"${demoUrl}\" style=\"background:#d4af37;color:#fff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:16px;font-weight:bold;\">View Your Free Audit &rarr;</a>\n  </div>\n  <p style=\"font-size:13px;color:#888;\">This was prepared specifically for ${companyName} using your public business data.</p>\n  <p>Best,<br>Emily<br><strong>Fourcee</strong></p>\n</div>`;\n\nreturn [{\n  json: {\n    to: email,\n    from: fromEmail,\n    subject: `Re: Quick note about ${companyName}'s online presence`,\n    html: htmlBody,\n    demo_url: demoUrl,\n    senderIndex\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -768,
+        80
+      ],
+      "id": "635f8d7f-999c-48b1-a580-489fbd45f717",
+      "name": "Build Demo Email"
+    },
+    {
+      "parameters": {
+        "jsCode": "const deploymentId = $('Deploy to Vercel').first().json.id;\nconst vercelToken = 'REDACTED';\n\n// Poll until deployment is READY (max 3 minutes)\nlet productionUrl = null;\nlet attempts = 0;\n\nwhile (attempts < 18) {\n  const res = await helpers.httpRequest({\n    method: 'GET',\n    url: `https://api.vercel.com/v13/deployments/${deploymentId}`,\n    headers: { 'Authorization': `Bearer ${vercelToken}` },\n    returnFullResponse: false\n  });\n\n  console.log(`Attempt ${attempts + 1}: status = ${res.readyState}`);\n\n  if (res.readyState === 'READY') {\n    // Get the shortest alias that ends with .vercel.app (the clean production URL)\n    const aliases = res.alias || [];\n    const clean = aliases\n      .filter(a => a.endsWith('.vercel.app') && !a.includes('projects.vercel.app') && !a.includes('-git-'))\n      .sort((a, b) => a.length - b.length);\n    \n    productionUrl = clean[0] ? `https://${clean[0]}` : `https://${res.url}`;\n    console.log('Production URL:', productionUrl);\n    break;\n  }\n\n  if (res.readyState === 'ERROR' || res.readyState === 'CANCELED') {\n    throw new Error(`Deployment failed with state: ${res.readyState}`);\n  }\n\n  // Wait 10 seconds before retrying\n  await new Promise(r => setTimeout(r, 10000));\n  attempts++;\n}\n\nif (!productionUrl) {\n  throw new Error('Deployment did not become READY within 3 minutes');\n}\n\nreturn [{\n  json: {\n    ...($('Transform to Audit JSON').first().json),\n    production_url: productionUrl\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1168,
+        80
+      ],
+      "id": "2299bf93-4b32-4658-aa7e-f16bc7a7ee64",
+      "name": "Get Vercel Production URL"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  status = 'demo_sent'::lead_status,\n  demo_sent_at = NOW(),\n  updated_at = NOW()\nWHERE lead_id = '{{ $('Fetch Outreach Lead').first().json.lead_id }}';",
+        "options": {}
+      },
+      "id": "225e11c6-8d4a-4964-b7f1-751b43429715",
+      "name": "Mark Demo Sent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        304,
+        96
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s0",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s1",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s2",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s3",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 3,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 0
+        }
+      },
+      "id": "0b5a4269-9f81-44b5-90e1-cf077ad93951",
+      "name": "Switch Sender",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -448,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.from }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "7eba6fc4-bee2-4347-9400-0b6c6c3bcc6d",
+      "name": "Emily 4",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -48,
+        400
+      ],
+      "webhookId": "8fb69596-52d7-4a41-9689-185bc2aa0719",
+      "credentials": {
+        "smtp": {
+          "id": "n1MxN2Rmm11hcb8Q",
+          "name": "emily 4 smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.from }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "0b7a2dff-89d0-42f2-ae41-c859ad0c7534",
+      "name": "Emily 3",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -48,
+        240
+      ],
+      "webhookId": "06b5ada9-820e-4083-b8cc-f36dcb9b0960",
+      "credentials": {
+        "smtp": {
+          "id": "4RUsLKZyP2TTd3Cl",
+          "name": "emily 3 smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.from }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "74235856-4309-4452-934e-117822d2cffa",
+      "name": "Emily 2",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -48,
+        80
+      ],
+      "webhookId": "74475211-5790-4480-85c6-f61b5b1f09c5",
+      "credentials": {
+        "smtp": {
+          "id": "Je8Vb8QUIBJR3Z4d",
+          "name": "emily 2 smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.from }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "3cd0a5ec-6478-469a-8549-588d20e7c5a7",
+      "name": "Emily 1",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -48,
+        -80
+      ],
+      "webhookId": "06584237-e539-49a3-b09d-54b60d4fa984",
+      "credentials": {
+        "smtp": {
+          "id": "PqiNRWuRuSA38UfV",
+          "name": "emily 1 smtp"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Fetch Outreach Lead": {
+      "main": [
+        [
+          {
+            "node": "Any Leads?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Leads?": {
+      "main": [
+        [
+          {
+            "node": "Apify Scrape Website",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify Scrape Website": {
+      "main": [
+        [
+          {
+            "node": "Apify Scrape Google Maps",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apify Scrape Google Maps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify Scrape Google Maps": {
+      "main": [
+        [
+          {
+            "node": "Combine Scraped Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Scraped Data": {
+      "main": [
+        [
+          {
+            "node": "Groq Business Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Business Extraction": {
+      "main": [
+        [
+          {
+            "node": "Transform to Audit JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Audit JSON": {
+      "main": [
+        [
+          {
+            "node": "Clone fourcee-template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy to Vercel": {
+      "main": [
+        [
+          {
+            "node": "Get Vercel Production URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for github": {
+      "main": [
+        [
+          {
+            "node": "Deploy to Vercel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "push content to github": {
+      "main": [
+        [
+          {
+            "node": "Wait for github",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "push content to github",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch Outreach Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead Status": {
+      "main": [
+        [
+          {
+            "node": "Build Demo Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Demo Email": {
+      "main": [
+        [
+          {
+            "node": "Switch Sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Vercel Production URL": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Sender": {
+      "main": [
+        [
+          {
+            "node": "Emily 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Emily 2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Emily 3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Emily 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clone fourcee-template": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 4": {
+      "main": [
+        [
+          {
+            "node": "Mark Demo Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 3": {
+      "main": [
+        [
+          {
+            "node": "Mark Demo Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 2": {
+      "main": [
+        [
+          {
+            "node": "Mark Demo Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 1": {
+      "main": [
+        [
+          {
+            "node": "Mark Demo Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a1e06f4f-6ccb-4e79-8030-dda47ce3dabf",
+  "meta": {
+    "instanceId": "c7835cccb4837b169852eb4b74e5562be698a213b6fc032cc0df7e165029ee3b"
+  },
+  "id": "NxRVTBhQXn1Qt0xL",
+  "tags": []
+}

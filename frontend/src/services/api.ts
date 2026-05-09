@@ -1,9 +1,6 @@
 import axios from 'axios'
 
-// Use VITE_API_URL if set (for production), otherwise use relative /api (for local dev)
-const API_BASE_URL = import.meta.env.VITE_API_URL 
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : '/api'
+const API_BASE_URL = '/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -58,8 +55,31 @@ export interface Bid {
   applied_at: string
   bid_message?: string | null
   currency_code?: string
+  bid_amount_usd?: number
+  pipeline_stage?: string | null
+  // Prompt metadata (when available from backend)
   prompt_id?: number | null
   prompt_name?: string | null
+  client_billing_model?: 'hourly' | 'fixed' | null
+  client_hours?: number | null
+  client_rate?: number | null
+  client_total?: number | null
+  dev_billing_model?: string | null
+  dev_hours?: number | null
+  dev_rate?: number | null
+  assigned_freelancer?: string | null
+  fallback_reason?: string | null
+}
+
+export interface Milestone {
+  id: number
+  project_id: number
+  title: string
+  amount: number
+  due_date?: string | null
+  status: 'pending' | 'completed' | string
+  created_at?: string
+  updated_at?: string
 }
 
 export interface Stats {
@@ -83,6 +103,7 @@ export interface LogsResponse {
 
 export interface PromptAnalytics {
   prompt_hash: string
+  prompt_id?: number | null
   prompt_name: string | null
   total_bids: number
   total_replies: number
@@ -165,6 +186,53 @@ export const getBids = async (): Promise<Bid[]> => {
 export const syncBids = async (): Promise<{ success: boolean; message: string }> => {
   const response = await api.post<{ success: boolean; message: string }>('/bids/sync')
   return response.data
+}
+
+export interface CostPayload {
+  client_billing_model: 'hourly' | 'fixed'
+  client_hours?: number
+  client_rate?: number
+  client_total?: number
+  dev_billing_model: 'hourly' | 'fixed'
+  dev_hours?: number
+  dev_rate?: number
+  dev_total?: number
+}
+
+export const setBidCost = async (projectId: number, payload: CostPayload): Promise<void> => {
+  await api.post(`/bids/${projectId}/cost`, payload)
+}
+
+export const createDeal = async (
+  projectId: number,
+  stage: string = 'Won',
+  assignedFreelancer?: string
+): Promise<void> => {
+  await api.post(`/bids/${projectId}/deal`, { stage, assigned_freelancer: assignedFreelancer || null })
+}
+
+export const updateDealStage = async (projectId: number, stage: string): Promise<void> => {
+  await api.post(`/bids/${projectId}/deal`, { stage })
+}
+
+export const getMilestones = async (projectId: number): Promise<Milestone[]> => {
+  const response = await api.get<Milestone[]>(`/bids/${projectId}/milestones`)
+  return response.data
+}
+
+export const createMilestone = async (
+  projectId: number,
+  payload: { title: string; amount?: number; due_date?: string }
+): Promise<void> => {
+  await api.post(`/bids/${projectId}/milestones`, payload)
+}
+
+export const updateMilestoneStatus = async (milestoneId: number, status: 'pending' | 'completed'): Promise<void> => {
+  await api.post(`/bids/milestones/${milestoneId}/status`, { status })
+}
+
+export const deleteDeal = async (projectId: number, excludeFromStats: boolean = false): Promise<void> => {
+  await api.delete(`/bids/${projectId}/deal`, { data: { exclude_from_stats: excludeFromStats } })
 }
 
 // Stats API

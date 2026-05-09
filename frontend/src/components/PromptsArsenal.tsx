@@ -135,7 +135,7 @@ function PromptsArsenal() {
   }
 
   const calculateReplyRate = (prompt: PromptArsenal) => {
-    if (prompt.stats_bids === 0) return 0
+    if (prompt.stats_bids === 0) return '0.0'
     return ((prompt.stats_replies / prompt.stats_bids) * 100).toFixed(1)
   }
 
@@ -343,7 +343,7 @@ function PromptsArsenal() {
                     </div>
                     <div className="stat-item">
                       <div className="stat-label">REPLY RATE</div>
-                      <div className="stat-value" style={{ color: parseFloat(String(replyRate)) >= 20 ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
+                      <div className="stat-value" style={{ color: parseFloat(replyRate) >= 20 ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
                         {replyRate}%
                       </div>
                     </div>

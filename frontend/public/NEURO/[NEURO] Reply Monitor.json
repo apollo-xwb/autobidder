@@ -1,0 +1,464 @@
+{
+  "name": "[NEURO] Reply Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const email = $input.first().json;\n\nconst fromRaw = email.from || '';\nconst fromMatch = fromRaw.match(/<([^>]+)>/);\nconst fromEmail = fromMatch ? fromMatch[1].toLowerCase() : fromRaw.toLowerCase().trim();\n\nconst subject = email.subject || '';\nconst textBody = email.text || email.html || '';\nconst bodySnippet = textBody.replace(/<[^>]*>/g, '').replace(/\\s+/g, ' ').trim().slice(0, 300);\n\nconsole.log('Reply received from:', fromEmail);\n\nreturn [{\n  json: {\n    from_email: fromEmail,\n    subject: subject,\n    body_snippet: bodySnippet,\n    raw_text: textBody.slice(0, 2000)\n  }\n}];"
+      },
+      "id": "842730bb-5c76-4c5c-9c84-a4be4085a708",
+      "name": "Extract Sender Info1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT lead_id, company_name, status, reply_processed FROM leads WHERE email = '{{ $json.from_email }}' LIMIT 1;",
+        "options": {}
+      },
+      "id": "a9b17106-c054-43fd-a9d3-0a9d33e289c7",
+      "name": "Match Lead by Email1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        912,
+        304
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "lead-found",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e59afe9e-9358-40cf-82eb-8f76651bb78b",
+      "name": "Lead Found?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "already-processed",
+              "leftValue": "={{ $json.reply_processed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e47a9d30-dbcc-444d-9ccc-63ca4ed6fe6a",
+      "name": "Already Processed?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead   = $input.first().json;\nconst sender = $('Extract Sender Info2').first().json;\n\nconst text = `${sender.subject || ''} ${sender.raw_text || ''}`.toLowerCase();\n\nconst unsubKeywords = ['unsubscribe','remove me','stop emailing','opt out','do not contact','no longer wish','take me off'];\nconst negativeKeywords = ['not interested','no thanks','no thank you','not at this time','not for us','already have','we have a solution','too busy','please stop','not looking'];\n\nlet sentiment = 'positive';\nif (unsubKeywords.some(k => text.includes(k))) sentiment = 'unsubscribe';\nelse if (negativeKeywords.some(k => text.includes(k))) sentiment = 'negative';\n\nconsole.log('Sentiment:', sentiment, '| Text:', text.slice(0, 100));\n\nreturn [{ json: {\n  lead_id:      lead.lead_id,\n  company_name: lead.company_name,\n  from_email:   sender.from_email,\n  subject:      sender.subject.replace(/'/g, \"''\"),\n  body_snippet: sender.body_snippet.replace(/'/g, \"''\"),\n  sentiment,\n  reason: `Keyword: ${sentiment}`\n} }];\n"
+      },
+      "id": "eba0dbc3-3220-4c4b-869d-2c3aa1b19198",
+      "name": "Groq Classify Sentiment1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO reply_inbox (from_email, subject, body_snippet, lead_id, sentiment, processed)\nVALUES (\n  '{{ $(\"Groq Classify Sentiment1\").first().json.from_email }}',\n  '{{ $(\"Groq Classify Sentiment1\").first().json.subject.replace(/'/g, \"''\") }}',\n  '{{ $(\"Groq Classify Sentiment1\").first().json.body_snippet.replace(/'/g, \"''\") }}',\n  '{{ $(\"Groq Classify Sentiment1\").first().json.lead_id }}',\n  '{{ $(\"Groq Classify Sentiment1\").first().json.sentiment }}',\n  TRUE\n)\nON CONFLICT DO NOTHING;",
+        "options": {}
+      },
+      "id": "41f965b3-4deb-41db-9f08-35af70a739c6",
+      "name": "Insert into reply_inbox1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1776,
+        288
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  reply_detected_at = NOW(),\n  reply_processed   = TRUE,\n  reply_sentiment   = '{{ $(\"Groq Classify Sentiment1\").first().json.sentiment }}',\n  reply_snippet     = LEFT('{{ $(\"Groq Classify Sentiment1\").first().json.body_snippet }}', 500),\n  needs_human       = FALSE,\n  status = CASE\n    WHEN '{{ $(\"Groq Classify Sentiment1\").first().json.sentiment }}' = 'positive'    THEN 'replied_positive'::lead_status\n    WHEN '{{ $(\"Groq Classify Sentiment1\").first().json.sentiment }}' = 'unsubscribe' THEN 'dead'::lead_status\n    ELSE 'replied_negative'::lead_status\n  END,\n  updated_at = NOW()\nWHERE lead_id = '{{ $(\"Groq Classify Sentiment1\").first().json.lead_id }}';",
+        "options": {}
+      },
+      "id": "b3157fc5-f462-45ab-ad2a-26af3fec9ca4",
+      "name": "Update Lead Status1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1984,
+        304
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-positive",
+              "leftValue": "={{ $('Groq Classify Sentiment1').first().json.sentiment }}",
+              "rightValue": "positive",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5366a9be-f880-4577-a31f-2d30c872a560",
+      "name": "Positive Reply?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2176,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8700054453:AAGu-Xp830OS9FOvdV-2w7ll_tbOuI3Lb18/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": -5208938961,\n  \"text\": \"🟢 *Positive Reply!*\\n\\nCompany: *{{ $('Groq Classify Sentiment1').first().json.company_name }}*\\nEmail: {{ $('Groq Classify Sentiment1').first().json.from_email }}\\n\\n_\\\"{{ $('Groq Classify Sentiment1').first().json.body_snippet.slice(0, 120) }}\\\"_\\n\\nTap below to generate their demo:\",\n  \"parse_mode\": \"Markdown\",\n  \"reply_markup\": \"{\\\"inline_keyboard\\\": [[{\\\"text\\\": \\\"🎯 Generate Demo\\\", \\\"callback_data\\\": \\\"demo_{{ $('Groq Classify Sentiment1').first().json.lead_id }}\\\"}]]}\"\n}",
+        "options": {}
+      },
+      "id": "f421fad7-eff7-4d0c-81df-bf3ed81161a9",
+      "name": "Send Telegram Button1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2416,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\n// Extract sender email from \"Name <email@domain>\" format\nconst fromRaw = item.from || '';\nconst fromEmail = (fromRaw.match(/<([^>]+)>/) || fromRaw.match(/([^\\s]+@[^\\s]+)/) || [])[1] || fromRaw;\n\n// Get body — IMAP node uses textPlain\nconst fullText = item.textPlain || item.text || '';\n\n// Strip quoted thread (everything after \"On ... wrote:\" or \"> \" lines)\nconst replyOnly = fullText\n  .split(/\\r?\\n/)\n  .filter(line => !line.startsWith('>') && !line.match(/^On .+wrote:$/))\n  .join('\\n')\n  .replace(/\\s+$/, '')        // trim trailing whitespace\n  .trim();\n\n// Use stripped reply, fall back to full text if stripping removes everything\nconst raw_text = replyOnly.length > 5 ? replyOnly : fullText.slice(0, 1000);\nconst body_snippet = raw_text.slice(0, 300);\n\nreturn [{ json: {\n  from_email: fromEmail.toLowerCase().trim(),\n  subject: item.subject || '',\n  body_snippet,\n  raw_text\n} }];\n"
+      },
+      "id": "24629357-4239-4795-97e5-eb5f44471ce3",
+      "name": "Extract Sender Info2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "forceReconnect": 200
+        }
+      },
+      "id": "7e878407-b17a-48c2-b05b-ecad5bdd3d62",
+      "name": "Emily 1",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        160,
+        64
+      ],
+      "credentials": {
+        "imap": {
+          "id": "prxKJeK2XONzCWII",
+          "name": "Emily 1"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "forceReconnect": 200
+        }
+      },
+      "id": "83ac54da-f50b-4619-86a0-9c619f39ecc3",
+      "name": "Emily 2",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        160,
+        224
+      ],
+      "credentials": {
+        "imap": {
+          "id": "prxKJeK2XONzCWII",
+          "name": "Emily 1"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "forceReconnect": 200
+        }
+      },
+      "id": "300baafb-3664-4892-abc0-428c23cc26b1",
+      "name": "Emily 3",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        160,
+        384
+      ],
+      "credentials": {
+        "imap": {
+          "id": "3dpbKYCfCmx9HCoG",
+          "name": "Emily 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "forceReconnect": 200
+        }
+      },
+      "id": "7d61b601-b14a-4db1-8aee-8ca83cdf9430",
+      "name": "Emily 4",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        160,
+        544
+      ],
+      "credentials": {
+        "imap": {
+          "id": "T9IYw0qTrYLQUhL3",
+          "name": "Emily 4"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Match Lead by Email1": {
+      "main": [
+        [
+          {
+            "node": "Lead Found?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Found?1": {
+      "main": [
+        [
+          {
+            "node": "Already Processed?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Processed?1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Groq Classify Sentiment1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Classify Sentiment1": {
+      "main": [
+        [
+          {
+            "node": "Insert into reply_inbox1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert into reply_inbox1": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Status1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead Status1": {
+      "main": [
+        [
+          {
+            "node": "Positive Reply?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Positive Reply?1": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Button1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Sender Info2": {
+      "main": [
+        [
+          {
+            "node": "Match Lead by Email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 1": {
+      "main": [
+        [
+          {
+            "node": "Extract Sender Info2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 2": {
+      "main": [
+        [
+          {
+            "node": "Extract Sender Info2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 3": {
+      "main": [
+        [
+          {
+            "node": "Extract Sender Info2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 4": {
+      "main": [
+        [
+          {
+            "node": "Extract Sender Info2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d8c8ee7d-8362-488d-a762-23631890928e",
+  "meta": {
+    "instanceId": "c7835cccb4837b169852eb4b74e5562be698a213b6fc032cc0df7e165029ee3b"
+  },
+  "id": "xzHsXq7Bbf6uvEXI",
+  "tags": []
+}

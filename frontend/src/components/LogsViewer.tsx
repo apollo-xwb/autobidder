@@ -8,11 +8,12 @@ function LogsViewer() {
   const [loading, setLoading] = useState(true)
   const [autoScroll, setAutoScroll] = useState(true)
   const [botRunning, setBotRunning] = useState<boolean>(false)
+  const [collapsed, setCollapsed] = useState(false)
   const lastLogCountRef = useRef<number>(0)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const logsContainerRef = useRef<HTMLDivElement>(null)
   const userScrolledRef = useRef(false)
-  const scrollTimeoutRef = useRef<number | null>(null)
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const loadLogs = useCallback(async () => {
     try {
@@ -121,6 +122,20 @@ function LogsViewer() {
     return importantKeywords.some(keyword => logLine.includes(keyword))
   }
 
+  const handleCopyLogs = async () => {
+    try {
+      if (!logs || logs.length === 0) {
+        alert('No logs to copy yet.')
+        return
+      }
+      await navigator.clipboard.writeText(logs.join('\n'))
+      alert('Logs copied to clipboard')
+    } catch (err) {
+      console.error('Failed to copy logs:', err)
+      alert('Failed to copy logs to clipboard')
+    }
+  }
+
   if (loading && logs.length === 0) {
     return (
       <div className="card">
@@ -152,7 +167,7 @@ function LogsViewer() {
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-secondary)' }}>
             <input
               type="checkbox"
@@ -164,6 +179,13 @@ function LogsViewer() {
           </label>
           <button
             className="btn"
+            onClick={() => setCollapsed(prev => !prev)}
+            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+          >
+            {collapsed ? 'Expand' : 'Collapse'}
+          </button>
+          <button
+            className="btn"
             onClick={() => {
               userScrolledRef.current = false
               setAutoScroll(true)
@@ -172,6 +194,13 @@ function LogsViewer() {
             style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
           >
             Scroll to Bottom
+          </button>
+          <button
+            className="btn"
+            onClick={handleCopyLogs}
+            style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+          >
+            Copy Logs
           </button>
         </div>
       </div>
@@ -184,7 +213,7 @@ function LogsViewer() {
           border: '1px solid var(--border-glass)',
           borderRadius: '12px',
           padding: '1.5rem',
-          maxHeight: '600px',
+          maxHeight: collapsed ? '140px' : '600px',
           overflowY: 'auto',
           fontFamily: 'Share Tech Mono, monospace',
           fontSize: '0.875rem',
@@ -199,6 +228,8 @@ function LogsViewer() {
         ) : (
           logs.map((log, index) => {
             const isImportant = isImportantLine(log)
+            const [timestamp, ...rest] = log.split(' | ')
+            const message = rest.join(' | ')
             return (
               <div
                 key={index}
@@ -206,12 +237,26 @@ function LogsViewer() {
                   padding: '0.25rem 0',
                   borderBottom: index < logs.length - 1 ? '1px solid rgba(255, 255, 255, 0.05)' : 'none',
                   wordBreak: 'break-word',
-                  color: isImportant ? '#bf00ff' : 'var(--text-primary)',
-                  textShadow: isImportant ? '0 0 10px #bf00ff, 0 0 20px #bf00ff' : 'none',
-                  fontWeight: isImportant ? 600 : 'normal',
+                  color: 'var(--text-primary)',
+                  fontWeight: isImportant ? 700 : 400,
                 }}
               >
-                {log}
+                <span
+                  style={{
+                    color: '#aaaaaa', // light grey
+                    marginRight: '0.5rem',
+                  }}
+                >
+                  {timestamp}
+                </span>
+                <span
+                  style={{
+                    color: isImportant ? '#ffff33' : 'var(--text-primary)',
+                    textShadow: isImportant ? '0 0 6px #ffff33, 0 0 12px #ffff33' : 'none',
+                  }}
+                >
+                  {message || ''}
+                </span>
               </div>
             )
           })

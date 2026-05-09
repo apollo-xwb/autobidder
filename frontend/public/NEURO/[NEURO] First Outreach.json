@@ -1,0 +1,1880 @@
+{
+  "name": "[NEURO] First Outreach",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "25463b37-dc0f-45df-b077-6022e3b4aab0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        816,
+        304
+      ],
+      "id": "dd367089-aeaa-422a-a83a-0eb0cbc4bd89",
+      "name": "Webhook",
+      "webhookId": "25463b37-dc0f-45df-b077-6022e3b4aab0",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5ac69c82-3d20-47ec-93cd-0579de61ff52",
+      "name": "Any Leads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        304
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "c337856c-1eb7-4946-a03f-84d63cdc17b8",
+      "name": "Loop Over Leads",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1520,
+        288
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "36495de1-d87f-4df3-a553-c6c87f133ce4",
+      "name": "Wait 1s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3648,
+        704
+      ],
+      "webhookId": "812ad8bb-7f3c-445c-b600-630b2e97f6e8",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH selected AS (\n  SELECT lead_id FROM leads\n  WHERE status = 'new'::lead_status\n  ORDER BY created_at ASC\n  LIMIT {{ $('Webhook').first().json.body.count }}\n  FOR UPDATE SKIP LOCKED\n)\nUPDATE leads SET\n  status = 'outreach'::lead_status,\n  campaign_id = '{{ $('Webhook').first().json.body.campaignId }}'::uuid,\n  updated_at = NOW()\nWHERE lead_id IN (SELECT lead_id FROM selected)\nRETURNING lead_id, email, company_name, city, current_url, campaign_id;",
+        "options": {}
+      },
+      "id": "4709b958-c77d-4728-9382-48b29d08d77b",
+      "name": "Fetch & Lock New Leads",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1072,
+        304
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Loop Over Leads').item.json;\nconst senders = [\n  { email: 'emily@fourceelabs.com', index: 0 },\n  { email: 'emily@thefourcee.com',  index: 1 },\n  { email: 'emily@fourceeapp.com',  index: 2 },\n  { email: 'emily@fourceehq.com',   index: 3 }\n];\nconst s = senders[$runIndex % 4];\nreturn [{ json: { ...lead, senderEmail: s.email, senderIndex: s.index } }];"
+      },
+      "id": "4b1dfd57-fb8b-4311-bd41-919febc523d3",
+      "name": "Pick SMTP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        304
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  status = 'sent'::lead_status,\n  outreach_sent_at = NOW(),\n  outreach_email_used = '{{ $('Pick SMTP').first().json.senderEmail }}',\n  updated_at = NOW()\nWHERE lead_id = '{{ $('Loop Over Leads').first().json.lead_id }}';",
+        "options": {}
+      },
+      "id": "3bac772a-4d41-4377-8645-0acd6a40e8cf",
+      "name": "Save Email + Mark Sent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3152,
+        192
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  status = 'new'::lead_status,\n  campaign_id = NULL,\n  updated_at = NOW()\nWHERE lead_id = '{{ $('Loop Over Leads').item.json.lead_id }}';",
+        "options": {}
+      },
+      "id": "7b86b230-2dbf-4b0a-bf50-8ff8266fcacd",
+      "name": "Revert Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3168,
+        416
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Pick SMTP').first().json;\nconst html = `<div style=\"font-family:'Helvetica Neue',Arial,sans-serif;max-width:560px;margin:0 auto;color:#333;line-height:1.7;padding:24px\">\n  <p>Hi there,</p>\n  <p>I came across <strong>${lead.company_name}</strong> and noticed your online presence could be working a lot harder for your business.</p>\n  <p>We help businesses like yours convert more visitors into customers — often seeing results within the first 30 days.</p>\n  <p>I'd love to put together a free personalised audit for ${lead.company_name}. No obligation, just actionable insights.</p>\n  <p>Would you be open to taking a quick look?</p>\n  <p style=\"margin-top:24px\">Best,<br><strong>Emily</strong><br>Fourcee</p>\n</div>`;\n\nreturn [{ json: {\n  ...lead,\n  emailTo: lead.email,\n  emailFrom: lead.senderEmail,\n  emailSubject: `Quick note about ${lead.company_name}'s online presence`,\n  emailHtml: html\n} }];"
+      },
+      "id": "9aef7910-cca9-41c7-b9f9-5d66f92041de",
+      "name": "Build Outreach Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        304
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s0",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s1",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s2",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s3",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 3,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 0
+        }
+      },
+      "id": "09a2d604-3281-4df3-9c21-ef4a919783a8",
+      "name": "Switch Sender",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2160,
+        256
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "75de2bf0-50e5-41be-ba1d-858b98e52dad",
+      "name": "emily 1 smtp",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2528,
+        80
+      ],
+      "webhookId": "d9fc2d50-f34e-45bc-98b1-bfee346b5115",
+      "credentials": {
+        "smtp": {
+          "id": "PqiNRWuRuSA38UfV",
+          "name": "emily 1 smtp"
+        }
+      },
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "9bb153fd-7307-414c-90bc-95e975acf52c",
+      "name": "emily 2 smtp",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2528,
+        272
+      ],
+      "webhookId": "cd71aae5-4adb-41f0-bd8c-6c0825fde3f3",
+      "credentials": {
+        "smtp": {
+          "id": "Je8Vb8QUIBJR3Z4d",
+          "name": "emily 2 smtp"
+        }
+      },
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "075e135f-98b2-4823-8a36-71301b5ed492",
+      "name": "emily 3 smtp",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2528,
+        464
+      ],
+      "webhookId": "25a7648c-d700-4135-8f70-dbf639ea10d9",
+      "credentials": {
+        "smtp": {
+          "id": "4RUsLKZyP2TTd3Cl",
+          "name": "emily 3 smtp"
+        }
+      },
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1b19d2e4-fd8b-4de7-84c4-5fe562c73d12",
+      "name": "emily 4 smtp",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2528,
+        672
+      ],
+      "webhookId": "d4e36a0c-fca4-4968-8675-4b0387ad4339",
+      "credentials": {
+        "smtp": {
+          "id": "n1MxN2Rmm11hcb8Q",
+          "name": "emily 4 smtp"
+        }
+      },
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f63e1b8b-9ad7-4527-8505-c1905f01231e",
+      "name": "Any Leads?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3072,
+        800
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "4e92004f-9243-44c3-9da4-d7e2320afed7",
+      "name": "Loop Over Leads1",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -2816,
+        784
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "785eb307-38b5-4cce-a389-66830046fdb3",
+      "name": "Wait 1s1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        272,
+        1264
+      ],
+      "webhookId": "812ad8bb-7f3c-445c-b600-630b2e97f6e8",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Loop Over Leads1').item.json;\nconst senders = [\n  { email: 'emily@fourceelabs.com', index: 0 },\n  { email: 'emily@thefourcee.com',  index: 1 },\n  { email: 'emily@fourceeapp.com',  index: 2 },\n  { email: 'emily@fourceehq.com',   index: 3 }\n];\nconst s = senders[$runIndex % 4];\nreturn [{ json: { ...lead, senderEmail: s.email, senderIndex: s.index } }];"
+      },
+      "id": "05b46db7-836c-44da-a3c7-a39e29cbd8bd",
+      "name": "Pick SMTP1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2416,
+        944
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  status = 'sent'::lead_status,\n  outreach_sent_at = NOW(),\n  outreach_email_used = '{{ $('Build Outreach Email').first().json.senderEmail }}',\n  updated_at = NOW()\nWHERE lead_id = '{{ $('Build Outreach Email').first().json.lead_id }}';",
+        "options": {}
+      },
+      "id": "3433eb2a-2082-4e56-aa21-cdd812720c8b",
+      "name": "Save Email + Mark Sent1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -224,
+        704
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  status = 'new'::lead_status,\n  campaign_id = NULL,\n  updated_at = NOW()\nWHERE lead_id = '{{ $('Build Outreach Email').first().json.lead_id }}';",
+        "options": {}
+      },
+      "id": "eafcf051-eb2f-4476-88d6-47a88b0b0798",
+      "name": "Revert Lead1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -208,
+        1088
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Pick SMTP1').first().json;\nconst html = `<div style=\"font-family:'Helvetica Neue',Arial,sans-serif;max-width:560px;margin:0 auto;color:#333;line-height:1.7;padding:24px\">\n  <p>Hi there,</p>\n  <p>I came across <strong>${lead.company_name}</strong> and noticed your online presence could be working a lot harder for your business.</p>\n  <p>We help businesses like yours convert more visitors into customers — often seeing results within the first 30 days.</p>\n  <p>I'd love to put together a free personalised audit for ${lead.company_name}. No obligation, just actionable insights.</p>\n  <p>Would you be open to taking a quick look?</p>\n  <p style=\"margin-top:24px\">Best,<br><strong>Emily</strong><br>Fourcee</p>\n</div>`;\n\nreturn [{ json: {\n  ...lead,\n  emailTo: lead.email,\n  emailFrom: lead.senderEmail,\n  emailSubject: `Quick note about ${lead.company_name}'s online presence`,\n  emailHtml: html\n} }];"
+      },
+      "id": "e1264056-6e71-47e6-a0a0-ff746fec5f3b",
+      "name": "Build Outreach Email1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2112,
+        880
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s0",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s1",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s2",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s3",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 3,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 0
+        }
+      },
+      "id": "750d14f5-7f85-4cd3-8f93-e456f0a3b797",
+      "name": "Switch Sender1",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1728,
+        736
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "5bbf0ca4-931b-4738-a915-03ffc50624bf",
+      "name": "Emily 1",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -1024,
+        528
+      ],
+      "webhookId": "4dbf61df-d4e7-4194-8ab3-b6ea720ad95d",
+      "credentials": {
+        "smtp": {
+          "id": "PqiNRWuRuSA38UfV",
+          "name": "emily 1 smtp"
+        }
+      },
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "eb78ad46-1001-42ae-969d-8ceac1c1c517",
+      "name": "Emily 2",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -1024,
+        672
+      ],
+      "webhookId": "96c2de7e-9d0f-46e4-99dc-677d28be1774",
+      "credentials": {
+        "smtp": {
+          "id": "Je8Vb8QUIBJR3Z4d",
+          "name": "emily 2 smtp"
+        }
+      },
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "c619c19d-3b41-4025-8d61-e5fe68b6eb94",
+      "name": "Emily 3",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -1024,
+        816
+      ],
+      "webhookId": "119e9cc5-7fdf-4c1d-a578-9adb2149c12b",
+      "credentials": {
+        "smtp": {
+          "id": "4RUsLKZyP2TTd3Cl",
+          "name": "emily 3 smtp"
+        }
+      },
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "5822b8c7-c203-462c-993f-f995e300d269",
+      "name": "Emily 4",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -1024,
+        960
+      ],
+      "webhookId": "761e97f8-02bb-409b-851d-55901e8c7b3a",
+      "credentials": {
+        "smtp": {
+          "id": "n1MxN2Rmm11hcb8Q",
+          "name": "emily 4 smtp"
+        }
+      },
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst count = parseInt(body.count) || 9999;\nconst campaignId = body.campaignId || body.campaign_id || '';\nreturn [{ json: { count, campaignId } }];"
+      },
+      "id": "4ecef78b-0d90-4ef3-b60f-899166fb7629",
+      "name": "Parse Campaign Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3504,
+        800
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "25463b37-dc0f-45df-b077-6022e3b4aab0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3696,
+        800
+      ],
+      "id": "f38b927d-e280-4aea-8cb3-1be68ebedfe4",
+      "name": "Webhook3",
+      "webhookId": "25463b37-dc0f-45df-b077-6022e3b4aab0",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH selected AS (\n  SELECT lead_id FROM leads\n  WHERE status = 'new'::lead_status\n  ORDER BY created_at ASC\n  LIMIT {{ $('Parse Campaign Input').first().json.count }}\n  FOR UPDATE SKIP LOCKED\n)\nUPDATE leads SET\n  status = 'outreach'::lead_status,\n  campaign_id = '{{ $('Parse Campaign Input').first().json.campaignId }}'::uuid,\n  updated_at = NOW()\nWHERE lead_id IN (SELECT lead_id FROM selected)\nRETURNING lead_id, email, company_name, city, current_url, campaign_id;",
+        "options": {}
+      },
+      "id": "746b0821-ec3b-4c72-950b-4784f12774aa",
+      "name": "Fetch & Lock New Leads2",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -3296,
+        800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COUNT(*) FILTER(WHERE outreach_sent_at IS NOT NULL) AS sent,\n  COUNT(*) FILTER(WHERE status = 'new'::lead_status) AS reverted,\n  COUNT(*) AS total\nFROM leads\nWHERE campaign_id = '{{ $('Parse Campaign Input').first().json.campaignId }}'::uuid;",
+        "options": {}
+      },
+      "id": "62b272a7-f08d-464c-ab98-7711947201c1",
+      "name": "Campaign Stats1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1504,
+        144
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst BOT = '8700054453:AAGu-Xp830OS9FOvdV-2w7ll_tbOuI3Lb18';\nconst chatId = -5208938961;\nconst sent     = parseInt(s.sent)     || 0;\nconst reverted = parseInt(s.reverted) || 0;\nconst total    = parseInt(s.total)    || 0;\nconst rate     = total > 0 ? ((sent / total) * 100).toFixed(0) : 0;\nconst msg = `✅ *Campaign Complete!*\\n\\n📨 Emails sent: *${sent}*\\n⚠️ Failed / skipped: *${reverted}*\\n📋 Total targeted: *${total}*\\n📈 Success rate: *${rate}%*\\n\\nReplies will be monitored automatically.`;\nawait helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot8700054453:AAGu-Xp830OS9FOvdV-2w7ll_tbOuI3Lb18/sendMessage`,\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })\n});\nreturn [{ json: { done: true } }];"
+      },
+      "id": "e4dc0c31-3d0d-4fe6-ad64-2a9c9a736596",
+      "name": "Campaign Done Notify1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1280,
+        144
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "bbf8b466-2f78-4850-848d-9dfbf7485332",
+      "name": "Send Email fourceelabs",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2704,
+        3024
+      ],
+      "webhookId": "111ec55d-dc27-44b7-9c51-2d8b5840bf76",
+      "credentials": {
+        "smtp": {
+          "id": "PqiNRWuRuSA38UfV",
+          "name": "emily 1 smtp"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "395e903e-c6ec-44a6-aee9-f9fffc2c2aac",
+      "name": "Send Email thefourcee",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2704,
+        3168
+      ],
+      "webhookId": "0e8bcdcc-1884-47de-8dbe-d718f0dedcfb",
+      "credentials": {
+        "smtp": {
+          "id": "Je8Vb8QUIBJR3Z4d",
+          "name": "emily 2 smtp"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "db4cae53-97ed-45ca-a37e-cf27da9a77cc",
+      "name": "Send Email fourceeapp",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2704,
+        3312
+      ],
+      "webhookId": "d6d57717-f045-47ad-89c2-713c275808bf",
+      "credentials": {
+        "smtp": {
+          "id": "4RUsLKZyP2TTd3Cl",
+          "name": "emily 3 smtp"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.emailFrom }}",
+        "toEmail": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "89c3dc7b-6c72-444c-8a9c-d279ac6a4606",
+      "name": "Send Email fourceehq",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2704,
+        3456
+      ],
+      "webhookId": "d541a002-215e-4d38-9e32-cd5112d4ed19",
+      "credentials": {
+        "smtp": {
+          "id": "n1MxN2Rmm11hcb8Q",
+          "name": "emily 4 smtp"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COUNT(*) FILTER(WHERE outreach_sent_at IS NOT NULL) AS sent,\n  COUNT(*) FILTER(WHERE outreach_sent_at IS NULL)     AS failed,\n  COUNT(*) AS total\nFROM leads\nWHERE campaign_id = (\n  SELECT campaign_id FROM campaigns\n  ORDER BY created_at DESC\n  LIMIT 1\n);",
+        "options": {}
+      },
+      "id": "f8d6c0c9-0656-4328-9ea3-b9cb369a526c",
+      "name": "Campaign Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2368,
+        2752
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s        = $input.first().json;\nconst sent     = parseInt(s.sent)   || 0;\nconst failed   = parseInt(s.failed) || 0;\nconst total    = parseInt(s.total)  || 0;\nconst rate     = total > 0 ? ((sent / total) * 100).toFixed(0) : 0;\nconst BOT  = '8700054453:AAGu-Xp830OS9FOvdV-2w7ll_tbOuI3Lb18';\nconst CHAT = -5208938961;\nconst msg = [\n  '📬 *Campaign Complete!*',\n  '',\n  `📨 Emails sent successfully: *${sent}*`,\n  `⚠️  Failed / reverted:        *${failed}*`,\n  `📋 Total targeted:            *${total}*`,\n  `📈 Delivery rate:             *${rate}%*`,\n  '',\n  '_Replies are being monitored automatically._'\n].join('\\n');\nawait helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot8700054453:AAGu-Xp830OS9FOvdV-2w7ll_tbOuI3Lb18/sendMessage`,\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ chat_id: CHAT, text: msg, parse_mode: 'Markdown' })\n});\nreturn [{ json: { sent, failed, total } }];"
+      },
+      "id": "bb4c2092-3ee4-4e1e-9350-f6a6dea02985",
+      "name": "Campaign Done Notify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        2752
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "25463b37-dc0f-45df-b077-6022e3b4aab0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        592,
+        3200
+      ],
+      "id": "4ab8a26e-8b17-4e3b-a377-4c8808284a1e",
+      "name": "Webhook2",
+      "webhookId": "25463b37-dc0f-45df-b077-6022e3b4aab0"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "442b8e5b-b82b-41f0-b72f-5e2524039d94",
+      "name": "Any Leads?2",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        3200
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "833ed154-ac83-4b93-ac65-63b0f633b834",
+      "name": "Loop Over Leads2",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1296,
+        3184
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "9a73cf7a-181e-454c-88d8-494945a44bd7",
+      "name": "Wait 1s2",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3792,
+        3632
+      ],
+      "webhookId": "812ad8bb-7f3c-445c-b600-630b2e97f6e8"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH selected AS (\n  SELECT lead_id FROM leads\n  WHERE status = 'new'::lead_status\n  ORDER BY created_at ASC\n  LIMIT {{ $json.count }}\n  FOR UPDATE SKIP LOCKED\n)\nUPDATE leads SET\n  status = 'outreach'::lead_status,\n  campaign_id = '{{ $json.campaignId }}'::uuid,\n  updated_at = NOW()\nWHERE lead_id IN (SELECT lead_id FROM selected)\nRETURNING lead_id, email, company_name, city, current_url, campaign_id;\n",
+        "options": {}
+      },
+      "id": "0d6d972d-28d4-44ce-80ae-ed8190031e56",
+      "name": "Fetch & Lock New Leads1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        848,
+        3200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Loop Over Leads2').item.json;\nconst senders = [\n  { email: 'emily@fourceelabs.com', index: 0 },\n  { email: 'emily@thefourcee.com',  index: 1 },\n  { email: 'emily@fourceeapp.com',  index: 2 },\n  { email: 'emily@fourceehq.com',   index: 3 }\n];\nconst s = senders[$runIndex % 4];\nreturn [{ json: { ...lead, senderEmail: s.email, senderIndex: s.index } }];"
+      },
+      "id": "8012beba-e02a-41a6-b2fc-b8e08a50a104",
+      "name": "Pick SMTP2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        3184
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  status = 'sent'::lead_status,\n  outreach_sent_at = NOW(),\n  outreach_email_used = '{{ $('Build Outreach Email2').item.json.emailFrom }}',\n  updated_at = NOW()\nWHERE lead_id = '{{ $('Build Outreach Email2').item.json.lead_id }}';\n",
+        "options": {}
+      },
+      "id": "2984762f-4cdd-40cc-82fc-0f8781a16b6c",
+      "name": "Save Email + Mark Sent2",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3328,
+        3216
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET\n  status = 'new'::lead_status,\n  campaign_id = NULL,\n  updated_at = NOW()\nWHERE lead_id = '{{ $('Build Outreach Email2').item.json.lead_id }}';\n",
+        "options": {}
+      },
+      "id": "ca86e403-782e-4c55-82eb-0477b99ad6ee",
+      "name": "Revert Lead2",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3456,
+        3536
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Pick SMTP2').first().json;\nconst html = `<div style=\"font-family:'Helvetica Neue',Arial,sans-serif;max-width:560px;margin:0 auto;color:#333;line-height:1.7;padding:24px\">\n  <p>Hi there,</p>\n  <p>I came across <strong>${lead.company_name}</strong> and noticed your online presence could be working a lot harder for your business.</p>\n  <p>We help businesses like yours convert more visitors into customers — often seeing results within the first 30 days.</p>\n  <p>I'd love to put together a free personalised audit for ${lead.company_name}. No obligation, just actionable insights.</p>\n  <p>Would you be open to taking a quick look?</p>\n  <p style=\"margin-top:24px\">Best,<br><strong>Emily</strong><br>Fourcee</p>\n</div>`;\n\nreturn [{ json: {\n  ...lead,\n  emailTo: lead.email,\n  emailFrom: lead.senderEmail,\n  emailSubject: `Quick note about ${lead.company_name}'s online presence`,\n  emailHtml: html\n} }];"
+      },
+      "id": "a0178dbf-9e0c-4152-878f-5aa02efe2041",
+      "name": "Build Outreach Email2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        3152
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s0",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s1",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s2",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "id": "s3",
+                    "leftValue": "={{ $json.senderIndex }}",
+                    "rightValue": 3,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 0
+        }
+      },
+      "id": "912d742a-59f7-4ad3-9c73-33541d1f9fb3",
+      "name": "Switch Sender2",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2368,
+        3152
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst count = parseInt(body.count) || 9999;\nconst campaignId = body.campaignId || body.campaign_id || '';\nreturn [{ json: { count, campaignId } }];"
+      },
+      "id": "76ed6f84-cc58-48ea-b6ed-7a649f7908ef",
+      "name": "Parse Campaign Input1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2992
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch & Lock New Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch & Lock New Leads": {
+      "main": [
+        [
+          {
+            "node": "Any Leads?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Leads?": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Leads": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Pick SMTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick SMTP": {
+      "main": [
+        [
+          {
+            "node": "Build Outreach Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Outreach Email": {
+      "main": [
+        [
+          {
+            "node": "Switch Sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Sender": {
+      "main": [
+        [
+          {
+            "node": "emily 1 smtp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "emily 2 smtp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "emily 3 smtp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "emily 4 smtp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Email + Mark Sent": {
+      "main": [
+        [
+          {
+            "node": "Wait 1s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revert Lead": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1s": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "emily 1 smtp": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "emily 2 smtp": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "emily 3 smtp": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "emily 4 smtp": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Leads?1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Leads1": {
+      "main": [
+        [
+          {
+            "node": "Campaign Stats1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pick SMTP1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1s1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick SMTP1": {
+      "main": [
+        [
+          {
+            "node": "Build Outreach Email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Email + Mark Sent1": {
+      "main": [
+        [
+          {
+            "node": "Wait 1s1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revert Lead1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Outreach Email1": {
+      "main": [
+        [
+          {
+            "node": "Switch Sender1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Sender1": {
+      "main": [
+        [
+          {
+            "node": "Emily 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Emily 2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Emily 3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Emily 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 1": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 2": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 3": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emily 4": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Campaign Input": {
+      "main": [
+        [
+          {
+            "node": "Fetch & Lock New Leads2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook3": {
+      "main": [
+        [
+          {
+            "node": "Parse Campaign Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch & Lock New Leads2": {
+      "main": [
+        [
+          {
+            "node": "Any Leads?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campaign Stats1": {
+      "main": [
+        [
+          {
+            "node": "Campaign Done Notify1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email fourceelabs": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email thefourcee": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email fourceeapp": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email fourceehq": {
+      "main": [
+        [
+          {
+            "node": "Save Email + Mark Sent2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revert Lead2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campaign Stats": {
+      "main": [
+        [
+          {
+            "node": "Campaign Done Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook2": {
+      "main": [
+        [
+          {
+            "node": "Parse Campaign Input1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Leads?2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Leads2": {
+      "main": [
+        [
+          {
+            "node": "Campaign Stats",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pick SMTP2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1s2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch & Lock New Leads1": {
+      "main": [
+        [
+          {
+            "node": "Any Leads?2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick SMTP2": {
+      "main": [
+        [
+          {
+            "node": "Build Outreach Email2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Email + Mark Sent2": {
+      "main": [
+        [
+          {
+            "node": "Wait 1s2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revert Lead2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Outreach Email2": {
+      "main": [
+        [
+          {
+            "node": "Switch Sender2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Sender2": {
+      "main": [
+        [
+          {
+            "node": "Send Email fourceelabs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email thefourcee",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email fourceeapp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email fourceehq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Campaign Input1": {
+      "main": [
+        [
+          {
+            "node": "Fetch & Lock New Leads1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d203ec7d-02d3-4575-aa15-74fc3191c50d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c7835cccb4837b169852eb4b74e5562be698a213b6fc032cc0df7e165029ee3b"
+  },
+  "id": "35DhCIKuoGzbVGlP",
+  "tags": []
+}

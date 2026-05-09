@@ -142,11 +142,11 @@ def read_config_file():
                 i += 1
                 continue
             
-                if '=' in line and not line.startswith('#'):
-                    parts = line.split('=', 1)
-                    if len(parts) == 2:
-                        key = parts[0].strip()
-                        value = parts[1].strip()
+            if '=' in line and not line.startswith('#'):
+                parts = line.split('=', 1)
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    value = parts[1].strip()
                     
                     # Remove inline comments (everything after #, but not if # is inside quotes)
                     if '#' in value:
@@ -154,17 +154,17 @@ def read_config_file():
                         in_single_quote = False
                         in_double_quote = False
                         comment_pos = -1
-                        for i, char in enumerate(value):
-                            if char == "'" and (i == 0 or value[i-1] != '\\'):
+                        for j, char in enumerate(value):
+                            if char == "'" and (j == 0 or value[j-1] != '\\'):
                                 in_single_quote = not in_single_quote
-                            elif char == '"' and (i == 0 or value[i-1] != '\\'):
+                            elif char == '"' and (j == 0 or value[j-1] != '\\'):
                                 in_double_quote = not in_double_quote
                             elif char == '#' and not in_single_quote and not in_double_quote:
-                                comment_pos = i
+                                comment_pos = j
                                 break
                         if comment_pos >= 0:
                             value = value[:comment_pos].strip()
-                
+                    
                     # Handle multiline lists
                     if value.startswith('['):
                         # Collect all lines until we find the closing bracket
@@ -208,7 +208,7 @@ def read_config_file():
                                     elif char == ',' and not in_quotes:
                                         # End of item
                                         item = current_item.strip()
-                        # Remove quotes
+                                        # Remove quotes
                                         if (item.startswith("'") and item.endswith("'")) or (item.startswith('"') and item.endswith('"')):
                                             item = item[1:-1]
                                         if item:
@@ -385,7 +385,6 @@ def write_prompt_template(template):
     return False
 
 @app.route('/config', methods=['GET'])
-@app.route('/api/config', methods=['GET'])  # Also accept /api prefix
 def get_config():
     """Get current configuration"""
     try:
@@ -406,7 +405,6 @@ def get_config():
         return jsonify({'error': error_msg, 'traceback': traceback_str if app.debug else None}), 500
 
 @app.route('/config', methods=['POST'])
-@app.route('/api/config', methods=['POST'])  # Also accept /api prefix
 def update_config():
     """Update configuration"""
     try:
@@ -434,7 +432,6 @@ def update_config():
         }), 500
 
 @app.route('/prompts', methods=['GET'])
-@app.route('/api/prompts', methods=['GET'])  # Also accept /api prefix
 def get_prompts():
     """Get all prompts from arsenal"""
     try:
@@ -472,7 +469,6 @@ def get_prompts():
         return jsonify({'error': error_msg, 'traceback': traceback_str if app.debug else None}), 500
 
 @app.route('/prompts', methods=['POST'])
-@app.route('/api/prompts', methods=['POST'])  # Also accept /api prefix
 def create_prompt():
     """Create a new prompt in arsenal"""
     try:
@@ -499,7 +495,6 @@ def create_prompt():
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/prompts/<int:prompt_id>', methods=['PUT'])
-@app.route('/api/prompts/<int:prompt_id>', methods=['PUT'])  # Also accept /api prefix
 def update_prompt_arsenal(prompt_id):
     """Update a prompt in arsenal"""
     try:
@@ -539,7 +534,6 @@ def update_prompt_arsenal(prompt_id):
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/prompts/<int:prompt_id>/activate', methods=['POST'])
-@app.route('/api/prompts/<int:prompt_id>/activate', methods=['POST'])  # Also accept /api prefix
 def activate_prompt(prompt_id):
     """Activate a prompt (set as active and update autobidder.py)"""
     try:
@@ -574,7 +568,6 @@ def activate_prompt(prompt_id):
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/prompts/<int:prompt_id>', methods=['DELETE'])
-@app.route('/api/prompts/<int:prompt_id>', methods=['DELETE'])  # Also accept /api prefix
 def delete_prompt(prompt_id):
     """Delete a prompt from arsenal"""
     try:
@@ -590,7 +583,6 @@ def delete_prompt(prompt_id):
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/prompt', methods=['GET'])
-@app.route('/api/prompt', methods=['GET'])  # Also accept /api prefix
 def get_prompt():
     """Get current active prompt (for backward compatibility)"""
     try:
@@ -623,7 +615,6 @@ def init_prompt_metadata_table():
     conn.close()
 
 @app.route('/prompt', methods=['POST'])
-@app.route('/api/prompt', methods=['POST'])  # Also accept /api prefix
 def update_prompt():
     """Update current active prompt (for backward compatibility)"""
     import hashlib
@@ -766,32 +757,29 @@ def sync_bids_with_freelancer():
         conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
         c = conn.cursor()
         
-        # Ensure table exists with all columns
+        # Ensure table exists with all columns (keep in sync with autobidder.py)
         c.execute('''CREATE TABLE IF NOT EXISTS bids 
                      (project_id INTEGER PRIMARY KEY, title TEXT, bid_amount REAL, 
-                      status TEXT DEFAULT 'applied', outsource_cost REAL, profit REAL, applied_at TEXT, bid_message TEXT, reply_count INTEGER DEFAULT 0)''')
+                      status TEXT DEFAULT 'applied', outsource_cost REAL, profit REAL, applied_at TEXT, 
+                      bid_message TEXT, reply_count INTEGER DEFAULT 0, prompt_hash TEXT, currency_code TEXT,
+                      prompt_id INTEGER, pipeline_stage TEXT, dev_billing_model TEXT, dev_hours REAL,
+                      dev_rate REAL, assigned_freelancer TEXT, client_billing_model TEXT, client_hours REAL,
+                      client_rate REAL, client_total REAL, dev_total_usd REAL, excluded_from_stats INTEGER DEFAULT 0)''')
         
-        # Migrate: Add columns if they don't exist
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN bid_message TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN reply_count INTEGER DEFAULT 0")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN prompt_hash TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN currency_code TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
+        # Migrate: Add columns if they don't exist (older DBs)
+        for alter in [
+            "ALTER TABLE bids ADD COLUMN bid_message TEXT",
+            "ALTER TABLE bids ADD COLUMN reply_count INTEGER DEFAULT 0",
+            "ALTER TABLE bids ADD COLUMN prompt_hash TEXT",
+            "ALTER TABLE bids ADD COLUMN currency_code TEXT",
+            "ALTER TABLE bids ADD COLUMN prompt_id INTEGER",
+            "ALTER TABLE bids ADD COLUMN fallback_reason TEXT",
+        ]:
+            try:
+                c.execute(alter)
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
         
         # Get project details for bids that don't have titles
         config = read_config_file()
@@ -804,6 +792,17 @@ def sync_bids_with_freelancer():
                 pass
         
         synced_count = 0
+        # Try to get the currently active prompt so we can tag bids with it
+        active_prompt_id = None
+        try:
+            init_prompts_table()
+            pc = conn.cursor()
+            pc.execute("SELECT id FROM prompts WHERE is_active = 1 LIMIT 1")
+            row = pc.fetchone()
+            if row:
+                active_prompt_id = row[0]
+        except Exception:
+            active_prompt_id = None
         for bid in freelancer_bids:
             try:
                 project_id = bid.get('project_id')
@@ -848,7 +847,10 @@ def sync_bids_with_freelancer():
                     if existing[1] and existing[1] != 'USD':
                         currency_code = existing[1]
                 
-                # ALWAYS try to fetch project details to get accurate currency
+                # Determine billing model and always try to fetch project details
+                # to get accurate currency and payment type (hourly vs fixed).
+                client_billing_model = None
+
                 # The bid amount from Freelancer is in the project's currency, so we MUST get the project currency
                 if session:
                     try:
@@ -875,6 +877,17 @@ def sync_bids_with_freelancer():
                                         currency_code = project_data.get('currency', {}).get('code', 'USD')
                                     elif isinstance(project_data.get('currency'), str):
                                         currency_code = project_data.get('currency', 'USD')
+
+                                # Try to infer payment type (hourly vs fixed) from project data
+                                payment_type = (
+                                    str(project_data.get('type', ''))
+                                    or str(project_data.get('project_type', ''))
+                                    or str(budget_data.get('type', ''))
+                                ).lower()
+                                if 'hour' in payment_type:
+                                    client_billing_model = 'hourly'
+                                elif payment_type:
+                                    client_billing_model = 'fixed'
                     except Exception as e:
                         print(f"Error fetching project {project_id} for currency: {e}")
                         if not title:
@@ -887,7 +900,7 @@ def sync_bids_with_freelancer():
                 reply_count = bid.get('reply_count') or bid.get('message_count') or bid.get('replies') or 0
                 
                 # Insert or update bid (preserve existing status if it's 'won', preserve reply_count if higher)
-                c.execute("SELECT status, reply_count, currency_code FROM bids WHERE project_id=?", (project_id,))
+                c.execute("SELECT status, reply_count, currency_code, client_billing_model FROM bids WHERE project_id=?", (project_id,))
                 existing_data = c.fetchone()
                 status = 'applied'
                 if existing_data and existing_data[0] == 'won':
@@ -900,11 +913,49 @@ def sync_bids_with_freelancer():
                 if currency_code == 'USD' and existing_data and existing_data[2] and existing_data[2] != 'USD':
                     # If we didn't successfully fetch project details, keep existing non-USD currency
                     currency_code = existing_data[2]
+
+                # If we didn't infer billing model from project, keep existing one if present
+                if existing_data and len(existing_data) > 3 and existing_data[3]:
+                    if not client_billing_model:
+                        client_billing_model = existing_data[3]
                 
-                c.execute("""INSERT OR REPLACE INTO bids 
-                            (project_id, title, bid_amount, status, applied_at, bid_message, reply_count, currency_code) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                         (project_id, title, bid_amount, status, submitted_time, bid_message, reply_count, currency_code))
+                # Prefer to store prompt_id when available; fall back gracefully on older schemas
+                try:
+                    c.execute(
+                        """INSERT OR REPLACE INTO bids 
+                            (project_id, title, bid_amount, status, applied_at, bid_message, reply_count, currency_code, client_billing_model, prompt_id) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            project_id,
+                            title,
+                            bid_amount,
+                            status,
+                            submitted_time,
+                            bid_message,
+                            reply_count,
+                            currency_code,
+                            client_billing_model,
+                            active_prompt_id,
+                        ),
+                    )
+                except sqlite3.OperationalError:
+                    # Older DB without prompt_id column
+                    c.execute(
+                        """INSERT OR REPLACE INTO bids 
+                            (project_id, title, bid_amount, status, applied_at, bid_message, reply_count, currency_code, client_billing_model) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            project_id,
+                            title,
+                            bid_amount,
+                            status,
+                            submitted_time,
+                            bid_message,
+                            reply_count,
+                            currency_code,
+                            client_billing_model,
+                        ),
+                    )
                 synced_count += 1
             except Exception as e:
                 print(f"Error processing bid {bid.get('project_id')}: {e}")
@@ -918,6 +969,132 @@ def sync_bids_with_freelancer():
         print(f"Error syncing bids: {e}")
         import traceback
         traceback.print_exc()
+
+
+# === DEAL MILESTONES ===
+def init_milestones_table():
+    """Ensure milestones table exists."""
+    conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
+    c = conn.cursor()
+    c.execute(
+        '''CREATE TABLE IF NOT EXISTS milestones (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               project_id INTEGER NOT NULL,
+               title TEXT NOT NULL,
+               amount REAL DEFAULT 0,
+               due_date TEXT,
+               status TEXT DEFAULT 'pending',
+               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+               updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+           )'''
+    )
+    conn.commit()
+    conn.close()
+
+
+@app.route('/bids/<int:project_id>/milestones', methods=['GET'])
+@app.route('/api/bids/<int:project_id>/milestones', methods=['GET'])
+def get_milestones(project_id):
+    """Get milestones for a specific project/deal."""
+    try:
+        init_milestones_table()
+        conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, project_id, title, amount, due_date, status, created_at, updated_at "
+            "FROM milestones WHERE project_id = ? ORDER BY created_at ASC",
+            (project_id,),
+        )
+        rows = c.fetchall()
+        conn.close()
+        milestones = []
+        for row in rows:
+            milestones.append(
+                {
+                    "id": row[0],
+                    "project_id": row[1],
+                    "title": row[2],
+                    "amount": row[3],
+                    "due_date": row[4],
+                    "status": row[5],
+                    "created_at": row[6],
+                    "updated_at": row[7],
+                }
+            )
+        return jsonify(milestones)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@app.route('/bids/<int:project_id>/milestones', methods=['POST'])
+@app.route('/api/bids/<int:project_id>/milestones', methods=['POST'])
+def create_milestone(project_id):
+    """Create a milestone for a project/deal."""
+    try:
+        data = request.json or {}
+        title = (data.get("title") or "").strip()
+        amount = float(data.get("amount", 0) or 0)
+        due_date = data.get("due_date")
+        if not title:
+            return jsonify({"success": False, "error": "Title is required"}), 400
+        init_milestones_table()
+        conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO milestones (project_id, title, amount, due_date) "
+            "VALUES (?, ?, ?, ?)",
+            (project_id, title, amount, due_date),
+        )
+        milestone_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "id": milestone_id})
+    except Exception as e:
+        import traceback
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@app.route('/bids/milestones/<int:milestone_id>/status', methods=['POST'])
+@app.route('/api/bids/milestones/<int:milestone_id>/status', methods=['POST'])
+def update_milestone_status(milestone_id):
+    """Update milestone status. If all milestones for project are complete, update deal stage."""
+    try:
+        data = request.json or {}
+        status = data.get("status", "pending")
+        conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
+        c = conn.cursor()
+        # Get project id for this milestone
+        c.execute("SELECT project_id FROM milestones WHERE id = ?", (milestone_id,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"success": False, "error": "Milestone not found"}), 404
+        project_id = row[0]
+        # Update milestone
+        c.execute(
+            "UPDATE milestones SET status = ?, updated_at = datetime('now') WHERE id = ?",
+            (status, milestone_id),
+        )
+        # If marking complete, check if all milestones are complete
+        if status == "completed":
+            c.execute(
+                "SELECT COUNT(*) FROM milestones WHERE project_id = ? AND status != 'completed'",
+                (project_id,),
+            )
+            remaining = c.fetchone()[0] or 0
+            if remaining == 0:
+                # All milestones complete → move deal to Delivered
+                c.execute(
+                    "UPDATE bids SET pipeline_stage = 'Delivered' WHERE project_id = ?",
+                    (project_id,),
+                )
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "project_id": project_id, "status": status})
+    except Exception as e:
+        import traceback
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
 
 # Cache for last sync time to avoid too frequent API calls
 _last_sync_time = 0
@@ -952,83 +1129,108 @@ def get_bids():
         conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
         c = conn.cursor()
         
-        # Ensure table exists
-        c.execute('''CREATE TABLE IF NOT EXISTS bids 
-                     (project_id INTEGER PRIMARY KEY, title TEXT, bid_amount REAL, 
-                      status TEXT DEFAULT 'applied', outsource_cost REAL, profit REAL, applied_at TEXT, bid_message TEXT, reply_count INTEGER DEFAULT 0)''')
-        conn.commit()
-        
         # Migrate: Add columns if they don't exist
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN bid_message TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN currency_code TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN prompt_id INTEGER")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN prompt_hash TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        # Migrations: ensure columns exist
+        for alter in [
+            "ALTER TABLE bids ADD COLUMN bid_message TEXT",
+            "ALTER TABLE bids ADD COLUMN currency_code TEXT",
+            "ALTER TABLE bids ADD COLUMN prompt_id INTEGER",
+            "ALTER TABLE bids ADD COLUMN reply_count INTEGER DEFAULT 0",
+            "ALTER TABLE bids ADD COLUMN pipeline_stage TEXT",
+            "ALTER TABLE bids ADD COLUMN client_billing_model TEXT",
+            "ALTER TABLE bids ADD COLUMN client_hours REAL",
+            "ALTER TABLE bids ADD COLUMN client_rate REAL",
+            "ALTER TABLE bids ADD COLUMN client_total REAL",
+            "ALTER TABLE bids ADD COLUMN dev_billing_model TEXT",
+            "ALTER TABLE bids ADD COLUMN dev_hours REAL",
+            "ALTER TABLE bids ADD COLUMN dev_rate REAL",
+            "ALTER TABLE bids ADD COLUMN dev_total_usd REAL",
+            "ALTER TABLE bids ADD COLUMN assigned_freelancer TEXT",
+            "ALTER TABLE bids ADD COLUMN fallback_reason TEXT",
+        ]:
+            try:
+                c.execute(alter)
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Column already exists
         
-        # Check if currency_code column exists
+        # Check which columns exist
         c.execute("PRAGMA table_info(bids)")
         columns = [col[1] for col in c.fetchall()]
         has_currency = 'currency_code' in columns
-        
-        # Check if reply_count column exists
         has_reply_count = 'reply_count' in columns
-        
-        # Check if prompt_id column exists
         has_prompt_id = 'prompt_id' in columns
+        has_pipeline = 'pipeline_stage' in columns
+        has_assigned = 'assigned_freelancer' in columns
+        has_fallback_reason = 'fallback_reason' in columns
+        # These extra columns are mostly for analytics / kanban
+        has_dev_meta = 'dev_billing_model' in columns or 'dev_hours' in columns or 'dev_rate' in columns
         
         # Force a fresh read by using a transaction
         c.execute("BEGIN IMMEDIATE")
-        
-        # Build query with prompt name join if prompt_id exists
         if has_prompt_id:
-            # Join with prompts table to get prompt name
-            base_select = """SELECT b.project_id, b.title, b.bid_amount, b.status, b.outsource_cost, b.profit, 
-                         b.applied_at, b.bid_message"""
-            if has_reply_count:
-                base_select += ", b.reply_count"
-            if has_currency:
-                base_select += ", b.currency_code"
-            base_select += ", b.prompt_id, p.name as prompt_name"
-            base_select += " FROM bids b LEFT JOIN prompts p ON b.prompt_id = p.id ORDER BY b.applied_at DESC"
-            c.execute(base_select)
+            # Join prompts to return prompt name when available
+            select_sql = """SELECT b.project_id, b.title, b.bid_amount, b.status, b.outsource_cost, b.profit,
+                         b.applied_at, b.bid_message,
+                         {reply_col}{comma1}{currency_col}{comma2}b.prompt_id, p.name as prompt_name{fallback_col}""".format(
+                reply_col="b.reply_count" if has_reply_count else "NULL as reply_count",
+                currency_col="b.currency_code" if has_currency else "NULL as currency_code",
+                comma1=", " if has_reply_count else "",
+                comma2=", " if has_currency else "",
+                fallback_col=", b.fallback_reason" if has_fallback_reason else ""
+            )
+            if has_pipeline:
+                select_sql += ", b.pipeline_stage"
+            if has_assigned:
+                select_sql += ", b.assigned_freelancer"
+            select_sql += " FROM bids b LEFT JOIN prompts p ON b.prompt_id = p.id ORDER BY b.applied_at DESC"
+            c.execute(select_sql)
         elif has_currency and has_reply_count:
-            # Explicitly select columns to ensure correct order
-            # Don't use COALESCE - return NULL so frontend can handle it properly
-            c.execute("""SELECT project_id, title, bid_amount, status, outsource_cost, profit, 
-                         applied_at, bid_message, reply_count, currency_code 
-                         FROM bids ORDER BY applied_at DESC""")
+            select_sql = """SELECT project_id, title, bid_amount, status, outsource_cost, profit, 
+                         applied_at, bid_message, reply_count, currency_code"""
+            if has_fallback_reason:
+                select_sql += ", fallback_reason"
+            if has_pipeline:
+                select_sql += ", pipeline_stage"
+            if has_assigned:
+                select_sql += ", assigned_freelancer"
+            select_sql += " FROM bids ORDER BY applied_at DESC"
+            c.execute(select_sql)
         elif has_currency:
-            c.execute("""SELECT project_id, title, bid_amount, status, outsource_cost, profit, 
-                         applied_at, bid_message, currency_code 
-                         FROM bids ORDER BY applied_at DESC""")
+            select_sql = """SELECT project_id, title, bid_amount, status, outsource_cost, profit, 
+                         applied_at, bid_message, currency_code"""
+            if has_fallback_reason:
+                select_sql += ", fallback_reason"
+            if has_pipeline:
+                select_sql += ", pipeline_stage"
+            if has_assigned:
+                select_sql += ", assigned_freelancer"
+            select_sql += " FROM bids ORDER BY applied_at DESC"
+            c.execute(select_sql)
         elif has_reply_count:
-            c.execute("""SELECT project_id, title, bid_amount, status, outsource_cost, profit, 
-                         applied_at, bid_message, reply_count 
-                         FROM bids ORDER BY applied_at DESC""")
+            select_sql = """SELECT project_id, title, bid_amount, status, outsource_cost, profit, 
+                         applied_at, bid_message, reply_count"""
+            if has_fallback_reason:
+                select_sql += ", fallback_reason"
+            if has_pipeline:
+                select_sql += ", pipeline_stage"
+            if has_assigned:
+                select_sql += ", assigned_freelancer"
+            select_sql += " FROM bids ORDER BY applied_at DESC"
+            c.execute(select_sql)
         else:
-            # Fallback if currency_code and reply_count columns don't exist yet
-            c.execute("""SELECT project_id, title, bid_amount, status, outsource_cost, profit, 
-                         applied_at, bid_message 
-                         FROM bids ORDER BY applied_at DESC""")
+            select_sql = """SELECT project_id, title, bid_amount, status, outsource_cost, profit, 
+                         applied_at, bid_message"""
+            if has_fallback_reason:
+                select_sql += ", fallback_reason"
+            if has_pipeline:
+                select_sql += ", pipeline_stage"
+            if has_assigned:
+                select_sql += ", assigned_freelancer"
+            select_sql += " FROM bids ORDER BY applied_at DESC"
+            c.execute(select_sql)
         rows = c.fetchall()
         c.execute("COMMIT")
-        conn.close()
-        
         bids = []
         for row in rows:
             bid_data = {
@@ -1041,60 +1243,102 @@ def get_bids():
                 'applied_at': row[6],
                 'bid_message': row[7] if len(row) > 7 else None,
             }
-            
-            # Handle columns based on what exists
-            col_idx = 8
+            # Add reply_count and currency/prompt columns based on selection order above
             if has_prompt_id:
-                # prompt_id and prompt_name are at the end
-                if has_reply_count and has_currency:
-                    # reply_count at 8, currency_code at 9, prompt_id at 10, prompt_name at 11
-                    bid_data['reply_count'] = row[8] if len(row) > 8 and row[8] is not None else 0
-                    bid_data['currency_code'] = row[9] if len(row) > 9 and row[9] else None
-                    bid_data['prompt_id'] = row[10] if len(row) > 10 else None
-                    bid_data['prompt_name'] = row[11] if len(row) > 11 else None
-                elif has_reply_count:
-                    # reply_count at 8, prompt_id at 9, prompt_name at 10
-                    bid_data['reply_count'] = row[8] if len(row) > 8 and row[8] is not None else 0
-                    bid_data['currency_code'] = None
-                    bid_data['prompt_id'] = row[9] if len(row) > 9 else None
-                    bid_data['prompt_name'] = row[10] if len(row) > 10 else None
-                elif has_currency:
-                    # currency_code at 8, prompt_id at 9, prompt_name at 10
-                    bid_data['reply_count'] = 0
-                    bid_data['currency_code'] = row[8] if len(row) > 8 and row[8] else None
-                    bid_data['prompt_id'] = row[9] if len(row) > 9 else None
-                    bid_data['prompt_name'] = row[10] if len(row) > 10 else None
-                else:
-                    # prompt_id at 8, prompt_name at 9
-                    bid_data['reply_count'] = 0
-                    bid_data['currency_code'] = None
-                    bid_data['prompt_id'] = row[8] if len(row) > 8 else None
-                    bid_data['prompt_name'] = row[9] if len(row) > 9 else None
+                idx = 8
+                bid_data['reply_count'] = row[idx] if has_reply_count and len(row) > idx and row[idx] is not None else 0
+                if has_reply_count:
+                    idx += 1
+                bid_data['currency_code'] = row[idx] if has_currency and len(row) > idx and row[idx] else None
+                if has_currency:
+                    idx += 1
+                bid_data['prompt_id'] = row[idx] if len(row) > idx else None
+                bid_data['prompt_name'] = row[idx + 1] if len(row) > idx + 1 else None
+                # fallback_reason comes after prompt_name
+                if has_fallback_reason:
+                    bid_data['fallback_reason'] = row[idx + 2] if len(row) > idx + 2 and row[idx + 2] else None
             elif has_reply_count and has_currency:
-                # Both columns exist: reply_count is at index 8, currency_code at index 9
                 bid_data['reply_count'] = row[8] if len(row) > 8 and row[8] is not None else 0
                 bid_data['currency_code'] = row[9] if len(row) > 9 and row[9] else None
-                bid_data['prompt_id'] = None
-                bid_data['prompt_name'] = None
+                if has_fallback_reason:
+                    bid_data['fallback_reason'] = row[10] if len(row) > 10 and row[10] else None
             elif has_reply_count:
-                # Only reply_count exists: it's at index 8
                 bid_data['reply_count'] = row[8] if len(row) > 8 and row[8] is not None else 0
                 bid_data['currency_code'] = None
-                bid_data['prompt_id'] = None
-                bid_data['prompt_name'] = None
+                if has_fallback_reason:
+                    bid_data['fallback_reason'] = row[9] if len(row) > 9 and row[9] else None
             elif has_currency:
-                # Only currency_code exists: it's at index 8
                 bid_data['reply_count'] = 0
                 bid_data['currency_code'] = row[8] if len(row) > 8 and row[8] else None
-                bid_data['prompt_id'] = None
-                bid_data['prompt_name'] = None
+                if has_fallback_reason:
+                    bid_data['fallback_reason'] = row[9] if len(row) > 9 and row[9] else None
             else:
-                # Neither column exists
                 bid_data['reply_count'] = 0
                 bid_data['currency_code'] = None
-                bid_data['prompt_id'] = None
-                bid_data['prompt_name'] = None
+                if has_fallback_reason:
+                    bid_data['fallback_reason'] = row[8] if len(row) > 8 and row[8] else None
+            
+            # Ensure fallback_reason is set (default to None if column doesn't exist)
+            if 'fallback_reason' not in bid_data:
+                bid_data['fallback_reason'] = None
+
+            # Pipeline stage and assigned_freelancer (if columns exist)
+            if has_pipeline:
+                # Find pipeline_stage - it's after prompt_name (if prompt_id exists) or after currency_code
+                if has_prompt_id:
+                    # After prompt_name (which is idx + 1)
+                    pipeline_idx = (idx + 1) + 1
+                elif has_currency:
+                    # After currency_code
+                    pipeline_idx = 10 if has_reply_count else 9
+                elif has_reply_count:
+                    pipeline_idx = 9
+                else:
+                    pipeline_idx = 8
+                bid_data['pipeline_stage'] = row[pipeline_idx] if len(row) > pipeline_idx else None
+                if has_assigned:
+                    bid_data['assigned_freelancer'] = row[pipeline_idx + 1] if len(row) > pipeline_idx + 1 else None
+                else:
+                    bid_data['assigned_freelancer'] = None
+            else:
+                bid_data['pipeline_stage'] = None
+                bid_data['assigned_freelancer'] = None
+
+            # Load client/dev billing metadata if columns exist
+            try:
+                if 'client_billing_model' in columns:
+                    detail_conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
+                    dc = detail_conn.cursor()
+                    dc.execute(
+                        "SELECT client_billing_model, client_hours, client_rate, client_total, "
+                        "dev_billing_model, dev_hours, dev_rate "
+                        "FROM bids WHERE project_id = ?",
+                        (bid_data['project_id'],),
+                    )
+                    drow = dc.fetchone()
+                    detail_conn.close()
+                    if drow:
+                        bid_data['client_billing_model'] = drow[0]
+                        bid_data['client_hours'] = drow[1]
+                        bid_data['client_rate'] = drow[2]
+                        bid_data['client_total'] = drow[3]
+                        bid_data['dev_billing_model'] = drow[4]
+                        bid_data['dev_hours'] = drow[5]
+                        bid_data['dev_rate'] = drow[6]
+            except Exception:
+                # Don't break get_bids if billing metadata can't be loaded
+                pass
+
+            # Add USD-equivalent value for consistent insights with dashboard totals
+            try:
+                amount = bid_data['bid_amount'] or 0
+                code = bid_data['currency_code'] or 'USD'
+                bid_data['bid_amount_usd'] = convert_to_usd(amount, code)
+            except Exception:
+                bid_data['bid_amount_usd'] = bid_data['bid_amount']
+
             bids.append(bid_data)
+        conn.close()
         return jsonify(bids)
     except Exception as e:
         import traceback
@@ -1252,6 +1496,251 @@ def sync_bids_now():
         print("=" * 60)
         return jsonify({'success': False, 'error': str(e), 'traceback': error_trace}), 500
 
+
+@app.route('/bids/<int:project_id>/cost', methods=['POST'])
+@app.route('/api/bids/<int:project_id>/cost', methods=['POST'])
+def set_bid_cost(project_id):
+    """Set client final amount, outsourcing cost and profit for a bid, and mark it as won.
+    
+    Expects JSON:
+      {
+        "client_billing_model": "hourly"|"fixed",
+        "client_hours": number (optional, for hourly),
+        "client_rate": number (optional, for hourly),
+        "client_total": number (optional, overrides calc),
+        "dev_billing_model": "hourly"|"fixed",
+        "dev_hours": number (optional, for hourly),
+        "dev_rate": number (optional, for hourly),
+        "dev_total": number (optional, overrides calc)
+      }
+    """
+    try:
+        data = request.json or {}
+        client_billing_model = data.get('client_billing_model')
+        client_hours = data.get('client_hours')
+        client_rate = data.get('client_rate')
+        dev_billing_model = data.get('dev_billing_model')
+        dev_hours = data.get('dev_hours')
+        dev_rate = data.get('dev_rate')
+
+        conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
+        c = conn.cursor()
+        c.execute("SELECT bid_amount, COALESCE(currency_code, 'USD') FROM bids WHERE project_id = ?", (project_id,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Bid not found'}), 404
+
+        original_bid_amount = row[0] or 0.0
+        currency_code = row[1] or 'USD'
+
+        # Compute client_total if not provided explicitly
+        client_total = data.get('client_total')
+        if client_total is None:
+            if client_billing_model == 'hourly' and client_hours is not None and client_rate is not None:
+                client_total = float(client_hours) * float(client_rate)
+            else:
+                # Fallback: use original bid amount
+                client_total = original_bid_amount
+        client_total = float(client_total)
+
+        # Compute dev_total_usd (what you pay dev, in USD)
+        dev_total_usd = data.get('dev_total')
+        if dev_total_usd is None:
+            if dev_billing_model == 'hourly' and dev_hours is not None and dev_rate is not None:
+                dev_total_usd = float(dev_hours) * float(dev_rate)
+            else:
+                # If nothing provided, assume zero cost
+                dev_total_usd = 0.0
+        dev_total_usd = float(dev_total_usd)
+
+        # Convert dev USD cost into project currency for consistent storage
+        # convert_to_usd(amount_local, code) = amount_local * rate
+        # => amount_local = usd / rate
+        try:
+            from_currency = currency_code.upper() if isinstance(currency_code, str) else 'USD'
+            if from_currency == 'USD':
+                dev_total_local = dev_total_usd
+            else:
+                rate = {
+                    'INR': 0.012,
+                    'EUR': 1.08,
+                    'GBP': 1.27,
+                    'AUD': 0.66,
+                    'CAD': 0.74,
+                    'JPY': 0.0067,
+                    'CNY': 0.14,
+                    'MXN': 0.058,
+                    'BRL': 0.20,
+                    'ZAR': 0.054,
+                    'SGD': 0.74,
+                    'HKD': 0.13,
+                    'NZD': 0.61,
+                    'SEK': 0.095,
+                    'NOK': 0.095,
+                    'DKK': 0.14,
+                    'PLN': 0.25,
+                    'CHF': 1.12,
+                    'AED': 0.27,
+                    'SAR': 0.27,
+                    'THB': 0.028,
+                    'IDR': 0.000064,
+                    'MYR': 0.21,
+                    'PHP': 0.018,
+                    'VND': 0.000041,
+                    'KRW': 0.00075,
+                    'TRY': 0.031,
+                    'ILS': 0.27,
+                    'RUB': 0.011,
+                }.get(from_currency, 1.0)
+                if rate <= 0:
+                    dev_total_local = dev_total_usd
+                else:
+                    dev_total_local = dev_total_usd / rate
+        except Exception:
+            dev_total_local = dev_total_usd
+
+        # Profit is calculated in project currency for consistency with existing stats
+        profit = client_total - dev_total_local
+
+        c.execute(
+            "UPDATE bids SET status = 'won', "
+            "client_billing_model = COALESCE(?, client_billing_model), "
+            "client_hours = COALESCE(?, client_hours), "
+            "client_rate = COALESCE(?, client_rate), "
+            "client_total = ?, "
+            "outsource_cost = ?, "
+            "profit = ?, "
+            "dev_total_usd = COALESCE(?, dev_total_usd), "
+            "dev_billing_model = COALESCE(?, dev_billing_model), "
+            "dev_hours = COALESCE(?, dev_hours), "
+            "dev_rate = COALESCE(?, dev_rate), "
+            "pipeline_stage = COALESCE(pipeline_stage, 'Won') "
+            "WHERE project_id = ?",
+            (
+                client_billing_model,
+                client_hours,
+                client_rate,
+                client_total,
+                dev_total_local,
+                profit,
+                dev_total_usd,
+                dev_billing_model,
+                dev_hours,
+                dev_rate,
+                project_id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({
+            'success': True,
+            'project_id': project_id,
+            'original_bid_amount': original_bid_amount,
+            'client_total': client_total,
+            # Dev total stored/used in two forms:
+            # - dev_total_local: in project currency (matches outsource_cost / profit math)
+            # - dev_total_usd: in USD (what you actually pay the dev)
+            'dev_total': dev_total_local,
+            'dev_total_local': dev_total_local,
+            'dev_total_usd': dev_total_usd,
+            'profit': profit,
+            'currency_code': currency_code,
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/bids/<int:project_id>/deal', methods=['POST'])
+@app.route('/api/bids/<int:project_id>/deal', methods=['POST'])
+def create_deal(project_id):
+    """Mark a bid as an active deal (project won) and put it into the pipeline.
+    
+    Expects JSON:
+      {
+        "stage": "Won" | "In Progress" | ...,
+        "assigned_freelancer": "name or handle" (optional)
+      }
+    """
+    try:
+        data = request.json or {}
+        stage = data.get('stage', 'Won')
+        assigned = data.get('assigned_freelancer')
+        conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
+        c = conn.cursor()
+        c.execute("SELECT project_id FROM bids WHERE project_id = ?", (project_id,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Bid not found'}), 404
+        c.execute(
+            "UPDATE bids SET status = 'won', pipeline_stage = ?, assigned_freelancer = COALESCE(?, assigned_freelancer) "
+            "WHERE project_id = ?",
+            (stage, assigned, project_id),
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'project_id': project_id, 'stage': stage})
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+@app.route('/bids/<int:project_id>/deal', methods=['DELETE'])
+@app.route('/api/bids/<int:project_id>/deal', methods=['DELETE'])
+def delete_deal(project_id):
+    """Remove a deal from the Kanban board.
+    
+    Expects JSON query parameter or body:
+      {
+        "exclude_from_stats": true/false (optional, default false)
+      }
+    
+    If exclude_from_stats is true, the deal is kept but marked as excluded from stats calculations.
+    If false, the deal is removed entirely (pipeline_stage set to NULL).
+    """
+    try:
+        data = request.json or {}
+        exclude_from_stats = data.get('exclude_from_stats', False)
+        
+        conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
+        c = conn.cursor()
+        
+        # Check if bid exists
+        c.execute("SELECT project_id FROM bids WHERE project_id = ?", (project_id,))
+        if not c.fetchone():
+            conn.close()
+            return jsonify({'success': False, 'error': 'Deal not found'}), 404
+        
+        # Migrate: Add excluded_from_stats column if it doesn't exist
+        try:
+            c.execute("ALTER TABLE bids ADD COLUMN excluded_from_stats INTEGER DEFAULT 0")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        
+        if exclude_from_stats:
+            # Remove from deals but mark as excluded from stats
+            c.execute(
+                "UPDATE bids SET pipeline_stage = NULL, excluded_from_stats = 1 WHERE project_id = ?",
+                (project_id,)
+            )
+            action = 'removed from deals and excluded from stats'
+        else:
+            # Remove from deals (clear pipeline_stage) and reset excluded flag
+            c.execute(
+                "UPDATE bids SET pipeline_stage = NULL, excluded_from_stats = 0 WHERE project_id = ?",
+                (project_id,)
+            )
+            action = 'removed from deals'
+        
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'project_id': project_id, 'action': action})
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
+
 @app.route('/stats', methods=['GET'])
 @app.route('/api/stats', methods=['GET'])  # Also accept /api prefix
 def get_stats():
@@ -1278,25 +1767,33 @@ def get_stats():
         except sqlite3.OperationalError:
             pass  # Column already exists
         
-        c.execute("SELECT COUNT(*) FROM bids")
+        # Check if excluded_from_stats column exists
+        c.execute("PRAGMA table_info(bids)")
+        columns = [col[1] for col in c.fetchall()]
+        has_excluded = 'excluded_from_stats' in columns
+        
+        # Build WHERE clause to exclude stats-excluded bids
+        exclude_clause = "WHERE excluded_from_stats = 0" if has_excluded else ""
+        
+        c.execute(f"SELECT COUNT(*) FROM bids {exclude_clause}")
         total = c.fetchone()[0] or 0
-        c.execute("SELECT COUNT(*) FROM bids WHERE status='applied'")
+        c.execute(f"SELECT COUNT(*) FROM bids WHERE status='applied' {('AND excluded_from_stats = 0' if has_excluded else '')}")
         applied = c.fetchone()[0] or 0
-        c.execute("SELECT COUNT(*) FROM bids WHERE status='won'")
+        c.execute(f"SELECT COUNT(*) FROM bids WHERE status='won' {('AND excluded_from_stats = 0' if has_excluded else '')}")
         won = c.fetchone()[0] or 0
-        c.execute("SELECT COUNT(*) FROM bids WHERE reply_count > 0")
+        c.execute(f"SELECT COUNT(*) FROM bids WHERE reply_count > 0 {('AND excluded_from_stats = 0' if has_excluded else '')}")
         replies = c.fetchone()[0] or 0
         
         # Calculate totals with currency conversion to USD
         # Check if currency_code column exists
-        c.execute("PRAGMA table_info(bids)")
-        columns = [col[1] for col in c.fetchall()]
         has_currency = 'currency_code' in columns
         
         if has_currency:
-            c.execute("SELECT bid_amount, COALESCE(currency_code, 'USD') as currency_code FROM bids WHERE bid_amount IS NOT NULL")
+            exclude_where = "WHERE bid_amount IS NOT NULL" + (" AND excluded_from_stats = 0" if has_excluded else "")
+            c.execute(f"SELECT bid_amount, COALESCE(currency_code, 'USD') as currency_code FROM bids {exclude_where}")
         else:
-            c.execute("SELECT bid_amount FROM bids WHERE bid_amount IS NOT NULL")
+            exclude_where = "WHERE bid_amount IS NOT NULL" + (" AND excluded_from_stats = 0" if has_excluded else "")
+            c.execute(f"SELECT bid_amount FROM bids {exclude_where}")
         bid_rows = c.fetchall()
         total_value = 0.0
         for row in bid_rows:
@@ -1305,9 +1802,11 @@ def get_stats():
             total_value += convert_to_usd(bid_amount, currency_code)
         
         if has_currency:
-            c.execute("SELECT profit, COALESCE(currency_code, 'USD') as currency_code FROM bids WHERE profit IS NOT NULL")
+            exclude_where = "WHERE profit IS NOT NULL" + (" AND excluded_from_stats = 0" if has_excluded else "")
+            c.execute(f"SELECT profit, COALESCE(currency_code, 'USD') as currency_code FROM bids {exclude_where}")
         else:
-            c.execute("SELECT profit FROM bids WHERE profit IS NOT NULL")
+            exclude_where = "WHERE profit IS NOT NULL" + (" AND excluded_from_stats = 0" if has_excluded else "")
+            c.execute(f"SELECT profit FROM bids {exclude_where}")
         profit_rows = c.fetchall()
         total_profit = 0.0
         for row in profit_rows:
@@ -1338,39 +1837,61 @@ def sync_prompt_stats():
         conn = sqlite3.connect(BIDS_DB, check_same_thread=False)
         c = conn.cursor()
         
+        # Check which columns exist in bids table
+        c.execute("PRAGMA table_info(bids)")
+        columns = [col[1] for col in c.fetchall()]
+        has_prompt_id = 'prompt_id' in columns
+        has_prompt_hash = 'prompt_hash' in columns
+        
         # Get all prompts
         c.execute("SELECT id FROM prompts")
         prompt_ids = [row[0] for row in c.fetchall()]
         
         for prompt_id in prompt_ids:
-            # Get prompt hash
-            c.execute("SELECT template FROM prompts WHERE id = ?", (prompt_id,))
-            result = c.fetchone()
-            if not result:
-                continue
+            bids_count = 0
+            replies_count = 0
+            won_count = 0
             
-            import hashlib
-            prompt_hash = hashlib.md5(result[0].encode('utf-8')).hexdigest()[:16]
+            if has_prompt_id:
+                # Use prompt_id (newer system)
+                c.execute("""SELECT COUNT(*), 
+                           SUM(CASE WHEN reply_count > 0 THEN 1 ELSE 0 END), 
+                           SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) 
+                           FROM bids WHERE prompt_id = ?""", (prompt_id,))
+                stats = c.fetchone()
+                if stats:
+                    bids_count = stats[0] or 0
+                    replies_count = stats[1] or 0
+                    won_count = stats[2] or 0
+            elif has_prompt_hash:
+                # Fall back to prompt_hash (older system for backward compatibility)
+                c.execute("SELECT template FROM prompts WHERE id = ?", (prompt_id,))
+                result = c.fetchone()
+                if result:
+                    import hashlib
+                    prompt_hash = hashlib.md5(result[0].encode('utf-8')).hexdigest()[:16]
+                    c.execute("""SELECT COUNT(*), 
+                               SUM(CASE WHEN reply_count > 0 THEN 1 ELSE 0 END), 
+                               SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) 
+                               FROM bids WHERE prompt_hash = ?""", (prompt_hash,))
+                    stats = c.fetchone()
+                    if stats:
+                        bids_count = stats[0] or 0
+                        replies_count = stats[1] or 0
+                        won_count = stats[2] or 0
             
-            # Count bids, replies, and wins for this prompt
-            c.execute("SELECT COUNT(*), SUM(CASE WHEN reply_count > 0 THEN 1 ELSE 0 END), SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) FROM bids WHERE prompt_hash = ?", (prompt_hash,))
-            stats = c.fetchone()
-            
-            if stats:
-                bids_count = stats[0] or 0
-                replies_count = stats[1] or 0
-                won_count = stats[2] or 0
-                
-                c.execute("UPDATE prompts SET stats_bids = ?, stats_replies = ?, stats_won = ? WHERE id = ?",
-                         (bids_count, replies_count, won_count, prompt_id))
+            # Update stats for this prompt
+            c.execute("UPDATE prompts SET stats_bids = ?, stats_replies = ?, stats_won = ? WHERE id = ?",
+                     (bids_count, replies_count, won_count, prompt_id))
         
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"Error syncing prompt stats: {e}")
+        import traceback
+        traceback.print_exc()
 
 @app.route('/analytics/prompts', methods=['GET'])
-@app.route('/api/analytics/prompts', methods=['GET'])  # Also accept /api prefix
 def get_prompt_analytics():
     """Get prompt performance analytics - includes all prompts, even with no bids"""
     try:
@@ -1379,73 +1900,133 @@ def get_prompt_analytics():
         c = conn.cursor()
         
         # Ensure tables exist
-        c.execute('''CREATE TABLE IF NOT EXISTS bids 
-                     (project_id INTEGER PRIMARY KEY, title TEXT, bid_amount REAL, 
-                      status TEXT DEFAULT 'applied', outsource_cost REAL, profit REAL, applied_at TEXT, bid_message TEXT, reply_count INTEGER DEFAULT 0, prompt_hash TEXT)''')
         init_prompts_table()
         init_prompt_metadata_table()
-        conn.commit()
         
-        # Migrate: Add prompt_hash column if it doesn't exist
-        try:
-            c.execute("ALTER TABLE bids ADD COLUMN prompt_hash TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        # Check which columns exist in bids table
+        c.execute("PRAGMA table_info(bids)")
+        columns = [col[1] for col in c.fetchall()]
+        has_prompt_id = 'prompt_id' in columns
+        has_prompt_hash = 'prompt_hash' in columns
         
-        # Get all prompts from prompts table and calculate their hashes
+        # Get all prompts from prompts table
         c.execute("SELECT id, name, template, created_at FROM prompts")
         all_prompts = c.fetchall()
         
-        # Create a map of prompt_hash -> prompt info
+        # Create a map of prompt_id -> prompt info and prompt_hash -> prompt info (for backward compatibility)
+        prompt_id_map = {}
         prompt_hash_map = {}
         for prompt_id, prompt_name, template, created_at in all_prompts:
-            prompt_hash = hashlib.md5(template.encode('utf-8')).hexdigest()[:16]
-            prompt_hash_map[prompt_hash] = {
+            prompt_id_map[prompt_id] = {
                 'name': prompt_name,
                 'created_at': created_at,
                 'id': prompt_id
             }
+            if has_prompt_hash:
+                prompt_hash = hashlib.md5(template.encode('utf-8')).hexdigest()[:16]
+                prompt_hash_map[prompt_hash] = {
+                    'name': prompt_name,
+                    'created_at': created_at,
+                    'id': prompt_id
+                }
         
-        # Get analytics from bids grouped by prompt_hash
-        c.execute("""
-            SELECT 
-                COALESCE(b.prompt_hash, 'unknown') as prompt_hash,
-                COUNT(*) as total_bids,
-                SUM(CASE WHEN b.reply_count > 0 THEN 1 ELSE 0 END) as total_replies,
-                SUM(CASE WHEN b.status = 'won' THEN 1 ELSE 0 END) as total_won,
-                ROUND(AVG(CASE WHEN b.reply_count > 0 THEN 1.0 ELSE 0.0 END) * 100, 2) as reply_rate,
-                MIN(b.applied_at) as first_used,
-                MAX(b.applied_at) as last_used,
-                pm.name as prompt_name
-            FROM bids b
-            LEFT JOIN prompt_metadata pm ON b.prompt_hash = pm.prompt_hash
-            WHERE b.prompt_hash IS NOT NULL
-            GROUP BY b.prompt_hash
-        """)
-        
-        bid_results = c.fetchall()
-        
-        # Create analytics dict from bids data
         analytics_dict = {}
-        for row in bid_results:
-            prompt_hash, total_bids, total_replies, total_won, reply_rate, first_used, last_used, prompt_name = row
-            analytics_dict[prompt_hash] = {
-                'prompt_hash': prompt_hash,
-                'prompt_name': prompt_name or prompt_hash_map.get(prompt_hash, {}).get('name'),
-                'total_bids': total_bids or 0,
-                'total_replies': total_replies or 0,
-                'total_won': total_won or 0,
-                'reply_rate': reply_rate or 0.0,
-                'first_used': first_used,
-                'last_used': last_used
-            }
+        
+        if has_prompt_id:
+            # Use prompt_id (newer system) - join with prompts table to get names
+            c.execute("""
+                SELECT 
+                    b.prompt_id,
+                    COUNT(*) as total_bids,
+                    SUM(CASE WHEN b.reply_count > 0 THEN 1 ELSE 0 END) as total_replies,
+                    SUM(CASE WHEN b.status = 'won' THEN 1 ELSE 0 END) as total_won,
+                    ROUND(AVG(CASE WHEN b.reply_count > 0 THEN 1.0 ELSE 0.0 END) * 100, 2) as reply_rate,
+                    MIN(b.applied_at) as first_used,
+                    MAX(b.applied_at) as last_used,
+                    p.name as prompt_name
+                FROM bids b
+                LEFT JOIN prompts p ON b.prompt_id = p.id
+                WHERE b.prompt_id IS NOT NULL
+                GROUP BY b.prompt_id
+            """)
+            
+            bid_results = c.fetchall()
+            
+            # Create analytics dict from bids data
+            for row in bid_results:
+                prompt_id, total_bids, total_replies, total_won, reply_rate, first_used, last_used, prompt_name = row
+                # Generate hash from prompt template for display purposes
+                prompt_info = prompt_id_map.get(prompt_id, {})
+                prompt_hash = None
+                # Get template from prompts table to generate hash
+                c.execute("SELECT template FROM prompts WHERE id = ?", (prompt_id,))
+                template_result = c.fetchone()
+                if template_result:
+                    prompt_hash = hashlib.md5(template_result[0].encode('utf-8')).hexdigest()[:16]
+                
+                # Use prompt_id as key
+                analytics_dict[prompt_id] = {
+                    'prompt_id': prompt_id,
+                    'prompt_hash': prompt_hash or f'id_{prompt_id}',  # Generate hash or use id as fallback
+                    'prompt_name': prompt_name or prompt_info.get('name', f'Prompt {prompt_id}'),
+                    'total_bids': total_bids or 0,
+                    'total_replies': total_replies or 0,
+                    'total_won': total_won or 0,
+                    'reply_rate': reply_rate or 0.0,
+                    'first_used': first_used,
+                    'last_used': last_used
+                }
+        
+        # Also check prompt_hash for backward compatibility (if column exists and we have bids with hash but no prompt_id)
+        if has_prompt_hash:
+            c.execute("""
+                SELECT 
+                    COALESCE(b.prompt_hash, 'unknown') as prompt_hash,
+                    COUNT(*) as total_bids,
+                    SUM(CASE WHEN b.reply_count > 0 THEN 1 ELSE 0 END) as total_replies,
+                    SUM(CASE WHEN b.status = 'won' THEN 1 ELSE 0 END) as total_won,
+                    ROUND(AVG(CASE WHEN b.reply_count > 0 THEN 1.0 ELSE 0.0 END) * 100, 2) as reply_rate,
+                    MIN(b.applied_at) as first_used,
+                    MAX(b.applied_at) as last_used
+                FROM bids b
+                WHERE b.prompt_hash IS NOT NULL
+                AND (b.prompt_id IS NULL OR b.prompt_id = 0)
+                GROUP BY b.prompt_hash
+            """)
+            
+            hash_results = c.fetchall()
+            
+            # Add hash-based analytics (only if not already covered by prompt_id)
+            for row in hash_results:
+                prompt_hash, total_bids, total_replies, total_won, reply_rate, first_used, last_used = row
+                # Use hash as key (prefixed to avoid conflicts)
+                hash_key = f"hash_{prompt_hash}"
+                if hash_key not in analytics_dict:
+                    analytics_dict[hash_key] = {
+                        'prompt_id': None,
+                        'prompt_hash': prompt_hash,
+                        'prompt_name': prompt_hash_map.get(prompt_hash, {}).get('name', f'Hash: {prompt_hash}'),
+                        'total_bids': total_bids or 0,
+                        'total_replies': total_replies or 0,
+                        'total_won': total_won or 0,
+                        'reply_rate': reply_rate or 0.0,
+                        'first_used': first_used,
+                        'last_used': last_used
+                    }
         
         # Add all prompts from prompts table, even if they have no bids
-        for prompt_hash, prompt_info in prompt_hash_map.items():
-            if prompt_hash not in analytics_dict:
-                analytics_dict[prompt_hash] = {
-                    'prompt_hash': prompt_hash,
+        for prompt_id, prompt_info in prompt_id_map.items():
+            if prompt_id not in analytics_dict:
+                # Generate hash from template for display
+                c.execute("SELECT template FROM prompts WHERE id = ?", (prompt_id,))
+                template_result = c.fetchone()
+                prompt_hash = None
+                if template_result:
+                    prompt_hash = hashlib.md5(template_result[0].encode('utf-8')).hexdigest()[:16]
+                
+                analytics_dict[prompt_id] = {
+                    'prompt_id': prompt_id,
+                    'prompt_hash': prompt_hash or f'id_{prompt_id}',
                     'prompt_name': prompt_info['name'],
                     'total_bids': 0,
                     'total_replies': 0,
@@ -1577,29 +2158,6 @@ def get_logs():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-def read_process_output(process, log_file):
-    """Read process output in background and write to log file"""
-    try:
-        with open(log_file, 'a', encoding='utf-8') as f:
-            for line in iter(process.stdout.readline, ''):
-                if not line:
-                    break
-                line = line.rstrip()
-                f.write(line + '\n')
-                f.flush()
-                # Also add to in-memory logs
-                global autobidder_logs
-                autobidder_logs.append(line)
-                if len(autobidder_logs) > MAX_LOG_LINES:
-                    autobidder_logs.pop(0)
-    except Exception as e:
-        # Write error to log file
-        try:
-            with open(log_file, 'a', encoding='utf-8') as f:
-                f.write(f"Error reading process output: {e}\n")
-        except:
-            pass
-
 @app.route('/autobidder/start', methods=['POST'])
 @app.route('/api/autobidder/start', methods=['POST'])  # Also accept /api prefix
 def start_autobidder():
@@ -1614,49 +2172,44 @@ def start_autobidder():
         with open(LOG_FILE, 'w', encoding='utf-8') as f:
             f.write('')
         
-        # Start process with output redirected to log file
-        log_handle = open(LOG_FILE, 'a', encoding='utf-8')
+        # Open log file for appending (keep it open for the process)
+        log_file_handle = open(LOG_FILE, 'a', encoding='utf-8')
+        
         autobidder_process = subprocess.Popen(
             ['python', 'autobidder.py'],
-            stdout=subprocess.PIPE,
+            stdout=log_file_handle,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-            bufsize=1,
-            env=os.environ.copy()  # Pass environment variables to child process
+            bufsize=1
         )
         
-        # Start background thread to read output
-        output_thread = threading.Thread(
-            target=read_process_output,
-            args=(autobidder_process, LOG_FILE),
-            daemon=True
-        )
-        output_thread.start()
-        
-        # Check if process started successfully (wait a tiny bit to catch immediate failures)
-        time.sleep(0.1)
+        # Give it a moment to start and check if it failed immediately
+        import time
+        time.sleep(0.5)
         if autobidder_process.poll() is not None:
-            # Process exited immediately - read error
-            exit_code = autobidder_process.returncode
-            error_msg = f"Process exited immediately with code {exit_code}"
-            # Try to read any error output
-            try:
-                with open(LOG_FILE, 'r', encoding='utf-8') as f:
-                    error_output = f.read()
-                    if error_output:
-                        error_msg += f": {error_output[-500:]}"  # Last 500 chars
-            except:
-                pass
-            autobidder_running = False
+            # Process exited immediately - read the log to see why
+            log_file_handle.flush()
+            log_file_handle.close()
+            with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                error_output = f.read()
             autobidder_process = None
+            error_msg = f"Process exited immediately. Log output: {error_output[:500]}"
+            print(f"Autobidder failed to start: {error_msg}")
             return jsonify({'success': False, 'error': error_msg}), 500
         
         autobidder_running = True
+        print(f"Autobidder process started with PID: {autobidder_process.pid}")
         return jsonify({'success': True, 'message': 'Autobidder started'})
     except Exception as e:
         import traceback
-        error_trace = traceback.format_exc()
-        return jsonify({'success': False, 'error': str(e), 'traceback': error_trace}), 500
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"Error starting autobidder: {error_msg}")
+        if 'log_file_handle' in locals():
+            try:
+                log_file_handle.close()
+            except:
+                pass
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/autobidder/stop', methods=['POST'])
 @app.route('/api/autobidder/stop', methods=['POST'])  # Also accept /api prefix
@@ -1666,6 +2219,16 @@ def stop_autobidder():
     
     stopped = False
     error_details = []
+    
+    # Create stop flag file first (works even if process was started externally)
+    try:
+        import os
+        stop_flag_file = "autobidder_stop.flag"
+        with open(stop_flag_file, 'w') as f:
+            f.write("stop")
+        error_details.append("Stop flag file created")
+    except Exception as e:
+        error_details.append(f"Could not create stop flag: {str(e)}")
     
     try:
         # First, try to stop if we started it via API
@@ -1906,24 +2469,119 @@ def stop_autobidder():
                 mimetype='application/json'
             )
 
-@app.route('/', methods=['GET'])
-def root():
-    """Root endpoint - API information"""
-    return jsonify({
-        'status': 'ok',
-        'message': 'Autobidder API Server',
-        'version': '1.0',
-        'endpoints': {
-            'health': '/health',
-            'stats': '/api/stats',
-            'bids': '/api/bids',
-            'config': '/api/config',
-            'prompts': '/api/prompts',
-            'autobidder_status': '/api/autobidder/status',
-            'autobidder_logs': '/api/autobidder/logs',
-        },
-        'docs': 'This is the API server. Use the endpoints above to interact with the autobidder.'
-    })
+@app.route('/projects/map', methods=['GET'])
+@app.route('/api/projects/map', methods=['GET'])
+def get_projects_for_map():
+    """Get active projects with location data for map display. Optional skills filter via query param."""
+    try:
+        config = read_config_file()
+        oauth_token = config.get('OAUTH_TOKEN')
+        
+        if not oauth_token:
+            return jsonify({'success': False, 'error': 'No OAUTH_TOKEN configured'}), 500
+        
+        if not FREELANCER_SDK_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Freelancer SDK not available'}), 500
+        
+        # Get skills filter from query params (comma-separated)
+        # If 'skills' parameter is provided, we MUST filter by it (even if empty)
+        skills_filter = request.args.get('skills', None)
+        filter_skills = []
+        require_skills_filter = False
+        
+        if skills_filter is not None:
+            # Skills parameter was provided - we must filter
+            require_skills_filter = True
+            filter_skills = [s.strip().lower() for s in skills_filter.split(',') if s.strip()]
+            print(f"DEBUG: Filtering by skills: {filter_skills}")
+        
+        session = Session(oauth_token=oauth_token)
+        
+        # Fetch active projects
+        url = 'https://www.freelancer.com/api/projects/0.1/projects/active/'
+        params = {
+            'limit': 500,  # Get more for map
+            'full_description': False,
+            'job_details': True,
+            'user_details': True,  # Need user details for location
+        }
+        response = session.session.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        projects = data.get('result', {}).get('projects', [])
+        
+        print(f"DEBUG: Fetched {len(projects)} projects for map, require_skills_filter={require_skills_filter}")
+        
+        filtered_projects = []
+        
+        for p in projects:
+            # Check if project has skills that match filter
+            jobs = p.get('jobs', []) or []
+            project_skills = [j.get('name', '').lower().strip() for j in jobs if j.get('name')]
+            
+            # If skills filter is required, only include projects that match
+            if require_skills_filter:
+                if not filter_skills:
+                    # Skills parameter was provided but empty - return no projects
+                    continue
+                overlap = set(filter_skills).intersection(project_skills)
+                if not overlap:
+                    continue
+            
+            # Extract location data - try multiple sources
+            owner = p.get('owner', {}) or {}
+            location = owner.get('location', {}) or {}
+            
+            # Also check project-level location data
+            project_location = p.get('location', {}) or {}
+            
+            # Try to get coordinates from location
+            lat = None
+            lon = None
+            city = location.get('city', '') or project_location.get('city', '') or owner.get('city', '')
+            country = location.get('country', '') or project_location.get('country', '') or owner.get('country', '')
+            
+            # If still no location, try to get from owner's profile
+            if not city and not country:
+                owner_profile = owner.get('profile', {}) or {}
+                city = owner_profile.get('city', '')
+                country = owner_profile.get('country', '')
+            
+            # Debug: log first few projects to see what data we have
+            if len(filtered_projects) < 3:
+                print(f"DEBUG Project {p.get('id')}: city='{city}', country='{country}', owner keys={list(owner.keys()) if owner else 'None'}")
+            
+            # If we have city/country but no coordinates, we'll need geocoding
+            # For now, return what we have and frontend can handle geocoding if needed
+            project_data = {
+                'id': p.get('id'),
+                'title': p.get('title', ''),
+                'budget': p.get('budget', {}),
+                'currency_code': p.get('currency', {}).get('code', 'USD') if isinstance(p.get('currency'), dict) else 'USD',
+                'skills': [j.get('name', '') for j in jobs],
+                'location': {
+                    'city': city,
+                    'country': country,
+                    'lat': lat,
+                    'lon': lon,
+                },
+                'bid_count': p.get('bid_stats', {}).get('bid_count', 0),
+                'time_submitted': p.get('time_submitted', 0),
+            }
+            filtered_projects.append(project_data)
+        
+        return jsonify({
+            'success': True,
+            'projects': filtered_projects,
+            'count': len(filtered_projects)
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        }), 500
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -1931,8 +2589,7 @@ def health():
     return jsonify({'status': 'ok', 'message': 'API server is running'})
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8000))
-    print(f"Starting Autobidder API Server on http://0.0.0.0:{port}")
+    print("Starting Autobidder API Server on http://localhost:8000")
     print("Make sure to update API_BASE_URL in mobile/services/api.js if needed")
-    app.run(host='0.0.0.0', port=port, debug=False)  # debug=False for production
+    app.run(host='0.0.0.0', port=8000, debug=True)
 

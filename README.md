@@ -54,5 +54,3 @@ http://localhost:3000
 - **Frontend not loading?** Make sure you're in the `frontend` directory and run `npm install` first
 - **Port already in use?** Change the port in `api_server.py` (line 335) or `vite.config.ts` (line 6)
 
-
-

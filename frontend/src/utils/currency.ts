@@ -43,5 +43,3 @@ export const formatCurrency = (amount: number, currencyCode?: string | null): st
   return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 }
 
-
-

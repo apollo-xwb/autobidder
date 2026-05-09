@@ -1,5 +1,59 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
+import { ThemeProvider, useTheme } from './contexts/ThemeContext'
+import Dashboard from './components/Dashboard'
+import ConfigEditor from './components/ConfigEditor'
+import PromptsArsenal from './components/PromptsArsenal'
+import SkillsManager from './components/SkillsManager'
+import BidsList from './components/BidsList'
+import PromptAnalytics from './components/PromptAnalytics'
+import DealsKanban from './components/DealsKanban'
+import MapView from './components/MapView'
+import AgentsStudio from './components/AgentsStudio'
+import MissionControl from './components/MissionControl.tsx'
+import NavOrbitLink from './components/NavOrbitLink'
+import './App.css'
+
+const NAV_GROUPS = [
+  {
+    id: 'fourcee',
+    label: 'Fourcee OS',
+    command: true,
+    links: [
+      { to: '/', label: 'Pulse' },
+      { to: '/saas', label: 'Mission' },
+    ],
+  },
+  {
+    id: 'desk',
+    label: 'Desk',
+    command: false,
+    links: [
+      { to: '/bids', label: 'Bids' },
+      { to: '/deals', label: 'Deals' },
+      { to: '/arsenal', label: 'Arsenal' },
+      { to: '/analytics', label: 'Analytics' },
+    ],
+  },
+  {
+    id: 'field',
+    label: 'Field',
+    command: false,
+    links: [
+      { to: '/map', label: 'Map' },
+      { to: '/agents', label: 'Agents' },
+    ],
+  },
+  {
+    id: 'core',
+    label: 'Core',
+    command: false,
+    links: [
+      { to: '/config', label: 'Config' },
+      { to: '/skills', label: 'Skills' },
+    ],
+  },
+] as const
 
 // Component to track location changes inside Router
 function LocationHandler({ onPathChange }: { onPathChange: (path: string) => void }) {
@@ -9,15 +63,6 @@ function LocationHandler({ onPathChange }: { onPathChange: (path: string) => voi
   }, [location.pathname, onPathChange])
   return null
 }
-import { ThemeProvider, useTheme } from './contexts/ThemeContext'
-import Dashboard from './components/Dashboard'
-import ConfigEditor from './components/ConfigEditor'
-import PromptEditor from './components/PromptEditor'
-import PromptsArsenal from './components/PromptsArsenal'
-import SkillsManager from './components/SkillsManager'
-import BidsList from './components/BidsList'
-import PromptAnalytics from './components/PromptAnalytics'
-import './App.css'
 
 function AppContent() {
   const { toggleTheme } = useTheme()
@@ -29,6 +74,7 @@ function AppContent() {
   // Get current pathname - will be updated inside Router
   const [currentPath, setCurrentPath] = React.useState(window.location.pathname)
   const isHomePage = currentPath === '/'
+  const isMapRoute = currentPath === '/map'
 
   React.useEffect(() => {
     const checkMobile = () => {
@@ -79,7 +125,13 @@ function AppContent() {
 
 
   const handleLogoClick = () => {
-    // Logo always toggles theme
+    // On map route, toggle filters instead of theme
+    if (isMapRoute) {
+      window.dispatchEvent(new CustomEvent('toggleMapFilters'))
+      return
+    }
+    
+    // Logo toggles theme on other routes
     toggleTheme()
     // Haptic feedback for devices that support it
     if (window.navigator && window.navigator.vibrate) {
@@ -144,7 +196,7 @@ function AppContent() {
                 className="nav-logo" 
                 onClick={handleLogoClick}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
-                title="Click to toggle light/dark mode"
+                title={isMapRoute ? "Click to toggle filters" : "Click to toggle light/dark mode"}
               />
               <img 
                 src="/landing.png" 
@@ -156,13 +208,23 @@ function AppContent() {
               />
             </div>
             <div className={`nav-links ${isMobileMenuOpen ? 'nav-links-open' : ''}`}>
-              <Link to="/" onClick={() => setIsMobileMenuOpen(false)}>Dashboard</Link>
-              <Link to="/bids" onClick={() => setIsMobileMenuOpen(false)}>Bids</Link>
-              <Link to="/arsenal" onClick={() => setIsMobileMenuOpen(false)}>Arsenal</Link>
-              <Link to="/analytics" onClick={() => setIsMobileMenuOpen(false)}>Analytics</Link>
-              <Link to="/config" onClick={() => setIsMobileMenuOpen(false)}>Config</Link>
-              <Link to="/prompt" onClick={() => setIsMobileMenuOpen(false)}>Prompt</Link>
-              <Link to="/skills" onClick={() => setIsMobileMenuOpen(false)}>Skills</Link>
+              <div className="nav-orbit-wrap">
+                {NAV_GROUPS.map((g) => (
+                  <div
+                    key={g.id}
+                    className={['nav-orbit-group', g.command ? 'nav-orbit-group--command' : ''].filter(Boolean).join(' ')}
+                  >
+                    <span className="nav-orbit-label">{g.label}</span>
+                    <div className="nav-orbit-ring">
+                      {g.links.map((item) => (
+                        <NavOrbitLink key={item.to} to={item.to} end={item.to === '/'} onClick={() => setIsMobileMenuOpen(false)}>
+                          {item.label}
+                        </NavOrbitLink>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <div className="binary-bar">
@@ -182,14 +244,17 @@ function AppContent() {
           </div>
         </nav>
         
-        <main className="main-content">
+        <main className="main-content" style={{ position: 'relative', padding: 0 }}>
           <Routes>
             <Route path="/" element={<Dashboard mobileView={mobileDashboardView} />} />
+            <Route path="/saas" element={<MissionControl />} />
             <Route path="/bids" element={<BidsList />} />
+            <Route path="/deals" element={<DealsKanban />} />
             <Route path="/arsenal" element={<PromptsArsenal />} />
             <Route path="/analytics" element={<PromptAnalytics />} />
+            <Route path="/map" element={<MapView />} />
+            <Route path="/agents" element={<AgentsStudio />} />
             <Route path="/config" element={<ConfigEditor />} />
-            <Route path="/prompt" element={<PromptEditor />} />
             <Route path="/skills" element={<SkillsManager />} />
           </Routes>
         </main>

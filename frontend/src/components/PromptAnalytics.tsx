@@ -83,7 +83,7 @@ function PromptAnalytics() {
               const hasNoBids = item.total_bids === 0
               return (
                 <tr 
-                  key={item.prompt_hash}
+                  key={item.prompt_id || item.prompt_hash}
                   style={{
                     opacity: hasNoBids ? 0.5 : 1,
                     background: hasNoBids ? 'rgba(128, 128, 128, 0.05)' : 'transparent',

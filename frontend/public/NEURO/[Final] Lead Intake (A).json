@@ -1,0 +1,166 @@
+{
+  "name": "[Final] Lead Intake (A)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f5a47760-0d16-4924-ab0d-9cee0e7d41a8",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        48
+      ],
+      "webhookId": "lead-intake"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO leads (email, company_name, city, current_url)\nVALUES ($1, $2, $3, $4)\nON CONFLICT (email) DO NOTHING\nRETURNING lead_id, status;",
+        "options": {
+          "queryReplacement": "={{ $json.body.email }},={{ $json.body.company_name }},={{ $json.body.city }},={{ $json.body.current_url }}"
+        }
+      },
+      "id": "566bbb71-6e7b-4c59-baa9-e4877788b9dc",
+      "name": "Insert Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -496,
+        48
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8ec4ab2d-3da3-41a6-987b-0c10ea983451",
+      "name": "Was Inserted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -272,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'created', lead_id: $json[0].lead_id }) }}",
+        "options": {
+          "responseCode": 201
+        }
+      },
+      "id": "10cd0c4b-8663-4f53-932e-be8113db4ef0",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -48,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"duplicate\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "5186e649-7d0c-498a-9a3d-ab880ab3e69e",
+      "name": "Respond Duplicate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -48,
+        160
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Insert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Lead": {
+      "main": [
+        [
+          {
+            "node": "Was Inserted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was Inserted?": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7a4a1f29-4c64-4027-a9a9-6fe8a6fa3355",
+  "meta": {
+    "instanceId": "c7835cccb4837b169852eb4b74e5562be698a213b6fc032cc0df7e165029ee3b"
+  },
+  "id": "zOBW3Yt2w591GbHv",
+  "tags": []
+}

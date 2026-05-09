@@ -1,0 +1,294 @@
+{
+  "name": "[NEURO] Lead Scraper",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "m1-scrape",
+        "options": {}
+      },
+      "id": "6ea845af-632c-4001-9e1d-e661652fe033",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3856,
+        384
+      ],
+      "webhookId": "m1-scrape-webhook-id"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst query = body.query || '';\nconst targetCount = parseInt(body.count) || 10;\nconst fetchCount = Math.ceil(targetCount * 2.5);\nconst chatId = body.chatId;\nconst BOT_TOKEN = '8700054453:AAGu-Xp830OS9FOvdV-2w7ll_tbOuI3Lb18';\n\nawait helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({\n    chat_id: chatId,\n    text: `🔍 *Scraping leads...*\\n\\nQuery: _${query}_\\nTarget: *${targetCount}* qualified leads\\n\\nThis may take 1-2 minutes.`,\n    parse_mode: 'Markdown'\n  })\n});\n\nreturn [{ json: { query, count: targetCount, fetchCount, chatId } }];"
+      },
+      "id": "e92f2a9d-a050-47f1-b5e8-ffcad56afe22",
+      "name": "Ack Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3648,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/compass~crawler-google-places/run-sync-get-dataset-items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"searchStringsArray\": [\"{{ $json.query }}\"],\n  \"maxCrawledPlacesPerSearch\": {{ $json.fetchCount }},\n  \"language\": \"en\",\n  \"scrapeReviews\": false,\n  \"scrapeImages\": false\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "5da78712-cc73-4891-8b4d-04d38246e7ba",
+      "name": "Apify Google Maps",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3456,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.all();\nconst targetCount = $('Ack Telegram').first().json.count;\n\n// Collect all businesses\nlet businesses = [];\nfor (const item of raw) {\n  const d = item.json;\n  if (Array.isArray(d)) {\n    for (const b of d) { if (b && b.title) businesses.push(b); }\n  } else if (d && d.title) {\n    businesses.push(d);\n  }\n}\nconsole.log('Businesses found:', businesses.length);\n\n// Pure junk: no way to get an email from these\nconst JUNK = ['google.com','maps.google.com','maps.app.goo.gl','goo.gl',\n  'yelp.com','tripadvisor.com','yellowpages.com','bing.com','mapquest.com',\n  'foursquare.com','apple.com'];\n\n// Social platforms: usable as fallback to find email\nconst SOCIAL = ['facebook.com','fb.com','instagram.com','twitter.com',\n  'x.com','linkedin.com','tiktok.com','pinterest.com','youtube.com'];\n\nfunction getHostname(url) {\n  if (!url) return '';\n  const full = url.indexOf('://') === -1 ? 'https://' + url : url;\n  const start = full.indexOf('://') + 3;\n  const rest = full.slice(start);\n  const end = rest.search(/[/\\?#:]/);\n  const host = (end === -1 ? rest : rest.slice(0, end)).toLowerCase();\n  return host.replace('www.', '');\n}\n\nfunction classifyUrl(url) {\n  if (!url || url.length < 5) return 'none';\n  const host = getHostname(url);\n  if (!host || host.indexOf('.') === -1) return 'none';\n  if (JUNK.some(d => host === d || host.endsWith('.' + d))) return 'junk';\n  if (SOCIAL.some(d => host === d || host.endsWith('.' + d))) return 'social';\n  return 'website';\n}\n\nfunction normalizeUrl(url) {\n  const host = getHostname(url);\n  if (!host) return null;\n  const proto = url.indexOf('://') !== -1 ? url.split('://')[0] : 'https';\n  return proto + '://' + host;\n}\n\nconst results = [];\nfor (const d of businesses) {\n  if (d.permanentlyClosed === true) continue;\n  const name = (d.title || d.name || '').trim();\n  if (!name) continue;\n\n  const rawUrl = (d.website || '').trim();\n  const urlType = classifyUrl(rawUrl);\n\n  // Skip junk URLs and missing URLs entirely\n  if (urlType === 'none' || urlType === 'junk') continue;\n\n  const currentUrl = normalizeUrl(rawUrl);\n  if (!currentUrl) continue;\n\n  // City with fallback from address string\n  let city = (d.city || '').trim();\n  if (!city && d.address) {\n    const parts = d.address.split(',');\n    city = parts.length > 1 ? parts[parts.length - 2].trim() : '';\n  }\n\n  results.push({ json: {\n    company_name: name,\n    city: city,\n    current_url: currentUrl,\n    email: (d.email || '').trim().toLowerCase(),\n    has_real_email: !!(d.email && d.email.trim()),\n    is_social_url: urlType === 'social'\n  }});\n\n  if (results.length >= targetCount) break;\n}\n\nconsole.log('Qualified leads (website + social fallback):', results.length);\n\nif (results.length === 0) {\n  return [{ json: { _no_leads: true, total_scraped: businesses.length } }];\n}\nreturn results;"
+      },
+      "id": "9d4f4035-4bc7-429a-8c92-ecb5700f1a0c",
+      "name": "Normalize Lead Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3248,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "76f04882-46b6-41fc-8c61-76c5115cbcc8",
+      "name": "Loop Over Leads",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -3056,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO leads (email, company_name, city, current_url, status)\nVALUES (\n  NULLIF('{{ $json.email ? $json.email.replace(/'/g, \"''\") : '' }}', ''),\n  '{{ $json.company_name.replace(/'/g, \"''\") }}',\n  '{{ $json.city.replace(/'/g, \"''\") }}',\n  '{{ $json.current_url.replace(/'/g, \"''\") }}',\n  'new'\n)\nON CONFLICT (email) DO NOTHING\nRETURNING lead_id, status;",
+        "options": {}
+      },
+      "id": "13539ec6-5bc0-4a77-a4fc-e3ffb2148432",
+      "name": "Insert Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -2528,
+        496
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "gM9MEsBvClvLP4gY",
+          "name": "neuro_db"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nif (result._no_leads) return [{ json: result }];\nconst isNew = result && result.lead_id ? true : false;\nreturn [{ json: { isNew } }];"
+      },
+      "id": "bac9403c-7c29-4c69-8549-55e6fbf28367",
+      "name": "Track Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2208,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allResults = $input.all().map(i => i.json);\nconst chatId  = $('Ack Telegram').first().json.chatId;\nconst query   = $('Ack Telegram').first().json.query;\nconst target  = $('Ack Telegram').first().json.count;\nconst BOT_TOKEN = '8700054453:AAGu-Xp830OS9FOvdV-2w7ll_tbOuI3Lb18';\n\n// Check if this is a no-leads signal\nconst noLeadsSignal = allResults.find(r => r._no_leads);\nif (noLeadsSignal) {\n  const msg = `⚠️ *Scrape finished — no leads found*\\n\\nQuery: _${query}_\\nTarget: ${target}\\n\\nScraped ${noLeadsSignal.total_scraped} businesses but none had usable websites. Try a different query.`;\n  await helpers.httpRequest({\n    method: 'POST',\n    url: `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })\n  });\n  return [{ json: { newCount: 0, dupCount: 0, total: 0 } }];\n}\n\nconst real = allResults.filter(r => r.isNew !== undefined);\nconst newCount = real.filter(r => r.isNew).length;\nconst dupCount = real.filter(r => r.isNew === false).length;\nconst total = newCount + dupCount;\n\nlet msg;\nif (total === 0) {\n  msg = `⚠️ *Scrape finished — no qualified leads found*\\n\\nQuery: _${query}_\\nTarget: ${target}\\n\\nNo emails were found on any business websites.`;\n} else {\n  const icon = total >= target ? '✅' : '⚠️';\n  msg = `${icon} *Scrape Complete!*\\n\\nQuery: _${query}_\\n\\n📥 Leads processed: *${total}* / ${target} target\\n🆕 New leads added: *${newCount}*\\n🔄 Already in DB: *${dupCount}*\\n\\nNew leads are ready for outreach.`;\n}\n\nawait helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })\n});\n\nreturn [{ json: { newCount, dupCount, total } }];"
+      },
+      "id": "332496a5-387c-4493-904e-ee6cbb28c937",
+      "name": "Notify Telegram Done",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst lead = items[0] ? items[0].json : {};\n\n// Pass _no_leads signal straight through to Telegram notifier\nif (lead._no_leads) return [{ json: lead }];\n\n// Already has email from Google Maps — skip scraping\nif (lead.has_real_email) return [{ json: lead }];\n\n// No URL at all — insert as-is without email\nif (!lead.current_url) return [{ json: lead }];\n\nlet foundEmail = '';\ntry {\n  // For social URLs (Facebook etc.), just scrape the main page\n  // For proper websites, also try /contact page\n  const urls = [{ url: lead.current_url }];\n  if (!lead.is_social_url) {\n    const sep = lead.current_url.endsWith('/') ? '' : '/';\n    urls.push({ url: lead.current_url + sep + 'contact' });\n  }\n\n  const res = await helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.apify.com/v2/acts/apify~website-content-crawler/run-sync-get-dataset-items',\n    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer REDACTED' },\n    body: JSON.stringify({\n      startUrls: urls,\n      crawlerType: 'cheerio',\n      maxCrawlPages: lead.is_social_url ? 1 : 2,\n      saveHtml: true,\n      saveMarkdown: false\n    }),\n    returnFullResponse: false\n  });\n\n  const pages = Array.isArray(res) ? res : [res];\n  const EMAIL_RE = /[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}/g;\n  const SKIP = ['example.','sentry.','wordpress.','schema.org','googleapis','.png','.jpg','.svg','.webp'];\n  for (const page of pages) {\n    const html = page.html || page.content || '';\n    const matches = html.match(EMAIL_RE) || [];\n    for (const e of matches) {\n      if (!SKIP.some(s => e.includes(s))) {\n        foundEmail = e.toLowerCase();\n        break;\n      }\n    }\n    if (foundEmail) break;\n  }\n} catch(e) {\n  console.log('Scrape failed for', lead.current_url, ':', e.message);\n}\n\n// ALWAYS return the lead — with or without email. Never return [] which would stop n8n.\nreturn [{ json: { ...lead, email: foundEmail, has_real_email: !!foundEmail } }];"
+      },
+      "id": "063fc491-d5d4-42c5-b2f8-4257bd93e20b",
+      "name": "Scrape Website for Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2784,
+        496
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "56754eb9-950a-4756-91e6-d5d18283df53",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3344,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const BOT_TOKEN = '8700054453:AAGu-Xp830OS9FOvdV-2w7ll_tbOuI3Lb18';\nconst err = $input.first().json;\nlet chatId = null;\ntry { chatId = $('Ack Telegram').first().json.chatId; } catch(e) {}\nif (!chatId) chatId = -5208938961;\n\nconst nodeName = err.execution?.error?.node?.name || 'Unknown node';\nconst errorMsg = err.execution?.error?.message || JSON.stringify(err).slice(0, 300);\n\nconst msg = `❌ *Lead Scraper Error*\\n\\n`\n  + `Node: _${nodeName}_\\n`\n  + `Error: ${errorMsg.slice(0, 200)}\\n\\n`\n  + `The scrape did not complete. Please check n8n.`;\n\nawait helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })\n});\n\nreturn [{ json: { error: true } }];"
+      },
+      "id": "7b20e89f-5faa-41a2-b63e-76bf3eaf41af",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3088,
+        704
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Ack Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ack Telegram": {
+      "main": [
+        [
+          {
+            "node": "Apify Google Maps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify Google Maps": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead Fields": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Leads": {
+      "main": [
+        [
+          {
+            "node": "Notify Telegram Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Scrape Website for Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Lead": {
+      "main": [
+        [
+          {
+            "node": "Track Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Result": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Website for Email": {
+      "main": [
+        [
+          {
+            "node": "Insert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "610543af-30a5-4c60-b850-96744cf7db71",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c7835cccb4837b169852eb4b74e5562be698a213b6fc032cc0df7e165029ee3b"
+  },
+  "id": "EEOEYgw4cDEUh7ao",
+  "tags": []
+}
