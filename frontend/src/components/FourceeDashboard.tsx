@@ -61,11 +61,8 @@ export default function FourceeDashboard() {
 
       <header className="fd-header">
         <div>
-          <div className="fd-kicker">Ops dashboard</div>
-          <h1 className="fd-title">Fourcee Activity</h1>
-          <p className="fd-sub">
-            Analytics endpoints aren’t exposed — this view tracks what you’ve run from Mission Control (on this device).
-          </p>
+          <h1 className="fd-title">Activity</h1>
+          <p className="fd-sub">A quick view of what you’ve run from Mission Control (this device).</p>
         </div>
         <div className="fd-header-actions">
           <div className="fd-sync-badge" data-live={loading ? 'busy' : 'idle'}>

@@ -1983,13 +1983,19 @@
 /* ========== Fourcee Pulse (dashboard) ========== */
 .fd-root {
   position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  box-sizing: border-box;
+  padding-inline: clamp(0.85rem, 3.5vw, 2rem);
   padding-bottom: 2.5rem;
+  overflow-x: clip;
 }
 
 .fd-aurora {
   pointer-events: none;
   position: absolute;
-  inset: -2rem -10% auto -10%;
+  inset: -2rem 0 auto 0;
   height: 420px;
   background: radial-gradient(ellipse at 30% 20%, rgba(180, 120, 255, 0.14), transparent 55%),
     radial-gradient(ellipse at 70% 10%, rgba(0, 255, 200, 0.12), transparent 50%),
