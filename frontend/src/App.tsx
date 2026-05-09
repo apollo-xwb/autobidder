@@ -244,7 +244,10 @@ function AppContent() {
           </div>
         </nav>
         
-        <main className="main-content" style={{ position: 'relative', padding: 0 }}>
+        <main
+          className={`main-content${currentPath === '/saas' ? ' main-content--mission' : ''}`}
+          style={{ position: 'relative', padding: 0 }}
+        >
           <Routes>
             <Route path="/" element={<Dashboard mobileView={mobileDashboardView} />} />
             <Route path="/saas" element={<MissionControl />} />

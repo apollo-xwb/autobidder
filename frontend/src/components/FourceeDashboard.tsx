@@ -12,6 +12,11 @@ function fmtInt(n: number | undefined) {
 type Insight = { tone: 'pulse' | 'warn' | 'win' | 'idle'; text: string }
 
 export default function FourceeDashboard() {
+  React.useEffect(() => {
+    document.documentElement.classList.add('fd-pulse-scroll-snap')
+    return () => document.documentElement.classList.remove('fd-pulse-scroll-snap')
+  }, [])
+
   const [range, setRange] = React.useState<OpsRangeKey>('7d')
   const [tick, setTick] = React.useState(() => Date.now())
   const [loading, setLoading] = React.useState(false)
@@ -107,39 +112,43 @@ export default function FourceeDashboard() {
       </div>
 
       <section className="fd-hero-metrics">
-        <div className="fd-ring-card card">
-          <div className="fd-ring-label">Ops</div>
-          <div className="fd-ring-wrap">
-            <div className="fd-ring" style={{ background: 'conic-gradient(rgba(0, 255, 200, 0.85) 180deg, rgba(255,255,255,0.06) 0deg)' }}>
-              <div className="fd-ring-inner">
-                <span className="fd-ring-value">{fmtInt(sum.total)}</span>
-                <span className="fd-ring-hint">{range} window</span>
+        <div className="fd-snap-ops">
+          <div className="fd-ring-card card">
+            <div className="fd-ring-label">Ops</div>
+            <div className="fd-ring-wrap">
+              <div className="fd-ring" style={{ background: 'conic-gradient(rgba(0, 255, 200, 0.85) 180deg, rgba(255,255,255,0.06) 0deg)' }}>
+                <div className="fd-ring-inner">
+                  <span className="fd-ring-value">{fmtInt(sum.total)}</span>
+                  <span className="fd-ring-hint">{range} window</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="fd-metric-grid">
-          <article className="fd-metric card">
-            <div className="fd-metric-label">Leads added</div>
-            <div className="fd-metric-value">{fmtInt(sum.intake)}</div>
-            <div className="fd-metric-hint">Manual intake runs</div>
-          </article>
-          <article className="fd-metric card fd-metric-accent">
-            <div className="fd-metric-label">Scrapes</div>
-            <div className="fd-metric-value">{fmtInt(sum.scrape)}</div>
-            <div className="fd-metric-hint">Lead discovery runs</div>
-          </article>
-          <article className="fd-metric card">
-            <div className="fd-metric-label">Campaigns</div>
-            <div className="fd-metric-value">{fmtInt(sum.launch)}</div>
-            <div className="fd-metric-hint">Outreach waves launched</div>
-          </article>
-          <article className="fd-metric card fd-metric-warn">
-            <div className="fd-metric-label">Demos</div>
-            <div className="fd-metric-value">{fmtInt(sum.demo)}</div>
-            <div className="fd-metric-hint">Demo generations triggered</div>
-          </article>
+        <div className="fd-snap-metric-cards fd-pulse-metrics-snap">
+          <div className="fd-metric-grid">
+            <article className="fd-metric card">
+              <div className="fd-metric-label">Leads added</div>
+              <div className="fd-metric-value">{fmtInt(sum.intake)}</div>
+              <div className="fd-metric-hint">Manual intake runs</div>
+            </article>
+            <article className="fd-metric card fd-metric-accent">
+              <div className="fd-metric-label">Scrapes</div>
+              <div className="fd-metric-value">{fmtInt(sum.scrape)}</div>
+              <div className="fd-metric-hint">Lead discovery runs</div>
+            </article>
+            <article className="fd-metric card">
+              <div className="fd-metric-label">Campaigns</div>
+              <div className="fd-metric-value">{fmtInt(sum.launch)}</div>
+              <div className="fd-metric-hint">Outreach waves launched</div>
+            </article>
+            <article className="fd-metric card fd-metric-warn">
+              <div className="fd-metric-label">Demos</div>
+              <div className="fd-metric-value">{fmtInt(sum.demo)}</div>
+              <div className="fd-metric-hint">Demo generations triggered</div>
+            </article>
+          </div>
         </div>
       </section>
 
