@@ -1,19 +1,15 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { loadFourceeSettings } from '../services/fourceeConfig'
-import { fetchFourceePulse, interestedRate, type FourceePulse } from '../services/fourceeApi'
+import { interestedRate, type FourceePulse } from '../services/fourceeApi'
 import NeuroTelegramTopology from './NeuroTelegramTopology'
 import MissionAssistant, { type AssistantDockMode } from './MissionAssistant'
 import '../App.css'
 
 const COMMAND_HEX: Array<{ mode: AssistantDockMode; ico: string; lbl: string; variant?: 'config' }> = [
-  { mode: 'status', ico: '📊', lbl: 'Status' },
-  { mode: 'campaigns', ico: '📈', lbl: 'Campaigns' },
-  { mode: 'launch', ico: '🚀', lbl: 'Launch' },
-  { mode: 'pending', ico: '🎯', lbl: 'Demos' },
+  { mode: 'intake', ico: '➕', lbl: 'Lead' },
   { mode: 'scrape', ico: '🔎', lbl: 'Scrape' },
-  { mode: 'report', ico: '📋', lbl: 'Reports' },
-  { mode: 'human', ico: '🤝', lbl: 'Human' },
+  { mode: 'launch', ico: '🚀', lbl: 'Campaign' },
+  { mode: 'demo', ico: '🎯', lbl: 'Demo' },
   { mode: 'config', ico: '⚙️', lbl: 'Config', variant: 'config' },
 ]
 
@@ -23,13 +19,9 @@ export default function MissionControl() {
 
   const [pulseMini, setPulseMini] = React.useState<FourceePulse | null>(null)
 
-  const refreshMiniPulse = React.useCallback(async () => {
-    try {
-      const p = await fetchFourceePulse(loadFourceeSettings(), '7d')
-      setPulseMini(p)
-    } catch {
-      setPulseMini(null)
-    }
+  const refreshMiniPulse = React.useCallback(() => {
+    // Pulse is optional in the 4-action OS; keep the chip but don’t block actions.
+    setPulseMini(null)
   }, [])
 
   React.useEffect(() => {
@@ -74,7 +66,7 @@ export default function MissionControl() {
 
             <div className="mc-hex-rows" role="group" aria-label="Operations">
               <div className="mc-hex-row">
-                {COMMAND_HEX.slice(0, 4).map(({ mode, ico, lbl, variant }) => (
+                {COMMAND_HEX.slice(0, 3).map(({ mode, ico, lbl, variant }) => (
                   <button
                     key={mode}
                     type="button"
@@ -89,7 +81,7 @@ export default function MissionControl() {
                 ))}
               </div>
               <div className="mc-hex-row mc-hex-row-nest">
-                {COMMAND_HEX.slice(4).map(({ mode, ico, lbl, variant }) => (
+                {COMMAND_HEX.slice(3).map(({ mode, ico, lbl, variant }) => (
                   <button
                     key={mode}
                     type="button"
