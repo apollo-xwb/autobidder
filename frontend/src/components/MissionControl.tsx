@@ -63,7 +63,13 @@ export default function MissionControl() {
   )
 
   React.useEffect(() => {
-    if (typeof window === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
+    if (
+      typeof window === 'undefined' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      flowMapOpen
+    ) {
+      return undefined
+    }
 
     let rafId = 0
     const run = () => {
@@ -107,7 +113,7 @@ export default function MissionControl() {
     }
     rafId = window.requestAnimationFrame(run)
     return () => window.cancelAnimationFrame(rafId)
-  }, [flashPair])
+  }, [flashPair, flowMapOpen])
 
   const rate = pulseMini ? interestedRate(pulseMini) : 0
 
@@ -132,8 +138,16 @@ export default function MissionControl() {
         </div>
       </header>
 
-      <section className="mc-main-hub" aria-label="Main mission actions">
-        <div className="mc-hex-field" role="group" aria-label="Operations">
+      <section
+        className={`mc-main-hub${flowMapOpen ? ' mc-main-hub-flow-mask' : ''}`}
+        aria-label="Main mission actions"
+      >
+        <div
+          className="mc-hex-field"
+          role="group"
+          aria-label="Operations"
+          aria-hidden={flowMapOpen}
+        >
           {COMMAND_HEX.map(({ mode, ico, lbl }, index) => (
             <button
               key={mode}

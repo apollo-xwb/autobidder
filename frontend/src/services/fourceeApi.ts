@@ -108,6 +108,14 @@ export function interestedRate(p: FourceePulse): number {
   return (p.interested / p.sent) * 100
 }
 
+/** Strip punctuation/symbols for scrape webhook payloads — only Unicode letters, digits, spaces (e.g. `Jewellery USA 10`). */
+export function scrapeQueryWordsOnly(text: string): string {
+  return text
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** Same parsing as Telegram Control Panel “Run Scraper” code node. */
 export function parseScrapeCommand(text: string): { query: string; count: number } | null {
   const trimmed = text.trim()
@@ -121,8 +129,9 @@ export function parseScrapeCommand(text: string): { query: string; count: number
     count = Math.min(lastNum, 100)
     query = parts.slice(0, -1).join(' ')
   }
-  if (!query.trim()) return null
-  return { query: query.trim(), count }
+  query = scrapeQueryWordsOnly(query.trim())
+  if (!query) return null
+  return { query, count }
 }
 
 // firstRowC removed with OS refactor

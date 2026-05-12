@@ -2620,6 +2620,10 @@
   }
 }
 
+.mc-main-hub-flow-mask .mc-hex-field {
+  display: none;
+}
+
 .mc-secondary-fold {
   margin-top: auto;
   align-self: center;
