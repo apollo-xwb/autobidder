@@ -134,7 +134,8 @@ export default function NeuroTelegramTopology() {
           nodes={[
             { label: 'Send instructions', sub: 'Optional UX copy' },
             { label: 'Run Scraper', sub: 'parse query + count + chatId' },
-            { label: 'POST m1-scrape', sub: FOURCEE_WEBHOOK_PATHS.leadScrape, mono: true },
+            { label: 'POST m1-scrape-website', sub: FOURCEE_WEBHOOK_PATHS.leadScrapeWebsite, mono: true },
+            { label: 'Callback', sub: 'async results → /api/scraper-callback/:id', mono: true },
             { label: 'Apify Places', sub: 'run-sync dataset' },
             { label: 'Normalize', sub: 'URL quality gate' },
             { label: 'Insert Lead', sub: 'ON CONFLICT DO NOTHING' },

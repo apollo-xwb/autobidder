@@ -2583,6 +2583,49 @@ def get_projects_for_map():
             'traceback': traceback.format_exc() if app.debug else None
         }), 500
 
+# --- Fourcee website scrape callbacks (async n8n → web UI) ---
+_scrape_jobs = {}
+_scrape_jobs_lock = threading.Lock()
+_SCRAPE_JOB_TTL_SEC = 3600
+
+
+def _prune_scrape_jobs():
+    now = time.time()
+    with _scrape_jobs_lock:
+        stale = [k for k, v in _scrape_jobs.items() if now - v.get('received_at', now) > _SCRAPE_JOB_TTL_SEC]
+        for k in stale:
+            del _scrape_jobs[k]
+
+
+@app.route('/scraper-callback/<job_id>', methods=['POST'])
+@app.route('/api/scraper-callback/<job_id>', methods=['POST'])
+def scraper_callback_receive(job_id):
+    """n8n POSTs final scrape stats/results here after [FINAL] M1 Lead Scraper (Website) finishes."""
+    _prune_scrape_jobs()
+    data = request.get_json(force=True, silent=True)
+    if data is None:
+        data = {}
+    with _scrape_jobs_lock:
+        _scrape_jobs[job_id] = {
+            'status': 'complete',
+            'result': data,
+            'received_at': time.time(),
+        }
+    return jsonify({'ok': True})
+
+
+@app.route('/scraper-callback/<job_id>', methods=['GET'])
+@app.route('/api/scraper-callback/<job_id>', methods=['GET'])
+def scraper_callback_status(job_id):
+    """Frontend polls until n8n has POSTed results for this job."""
+    _prune_scrape_jobs()
+    with _scrape_jobs_lock:
+        entry = _scrape_jobs.get(job_id)
+    if not entry:
+        return jsonify({'status': 'pending'})
+    return jsonify(entry)
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""

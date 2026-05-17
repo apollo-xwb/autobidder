@@ -1,6 +1,12 @@
 import React from 'react'
 import { FOURCEE_WEBHOOK_PATHS, loadFourceeSettings, saveFourceeSettings, webhookUrl, type FourceeSettings } from '../services/fourceeConfig'
-import { parseScrapeCommand, postFourceeJson } from '../services/fourceeApi'
+import {
+  formatScrapeResultMessage,
+  parseScrapeCommand,
+  pollScrapeJob,
+  postFourceeJson,
+  scraperCallbackUrl,
+} from '../services/fourceeApi'
 import { logFourceeOp } from '../services/fourceeTelemetry'
 
 /** Matches Telegram main menu callbacks + web-only Config. */
@@ -38,7 +44,7 @@ type ConfigFieldKey =
 const CONFIG_STEPS: { field: ConfigFieldKey; ask: string; optional: boolean }[] = [
   {
     field: 'webhookBase',
-    ask: 'Where should commands point?\n\nPaste your **main link** (the bit before `/m1-scrape` — **no** slash on the end).\n\nExample shape: `https://your-host/webhook`',
+    ask: 'Where should commands point?\n\nPaste your **main link** (the bit before `/m1-scrape-website` — **no** slash on the end).\n\nExample shape: `https://your-host/webhook`',
     optional: false,
   },
   {
@@ -274,17 +280,28 @@ export default function MissionAssistant({
     }
     appendUser(`${parsed.query} ${parsed.count}`)
     const s = loadFourceeSettings()
-    const chatId = s.telegramChatId ? parseInt(s.telegramChatId, 10) : 0
+    const rawChat = s.telegramChatId?.trim()
+    const chatNum = rawChat ? parseInt(rawChat, 10) : NaN
+    const chatId = Number.isFinite(chatNum) && chatNum !== 0 ? chatNum : undefined
+    const jobId = crypto.randomUUID()
+    const callbackUrl = scraperCallbackUrl(jobId)
     setBusy(true)
-    appendAssistant('Sending the scrape…')
+    appendAssistant('Scraping in progress… Usually **1–2 minutes**. You can leave this open.')
     try {
-      await postFourceeJson(s, webhookUrl(s, FOURCEE_WEBHOOK_PATHS.leadScrape), {
-        query: parsed.query,
-        count: parsed.count,
-        chatId,
-      })
-      appendAssistant('✅ Sent. If Telegram is linked, you\'ll get a heads‑up there too.')
-      logFourceeOp('scrape', { query: parsed.query, count: parsed.count })
+      await postFourceeJson(
+        s,
+        webhookUrl(s, FOURCEE_WEBHOOK_PATHS.leadScrapeWebsite),
+        {
+          query: parsed.query,
+          count: parsed.count,
+          callbackUrl,
+          ...(chatId !== undefined ? { chatId } : {}),
+        },
+        { timeoutMs: 20_000 }
+      )
+      const stats = await pollScrapeJob(jobId)
+      appendAssistant(formatScrapeResultMessage(parsed.query, parsed.count, stats))
+      logFourceeOp('scrape', { query: parsed.query, count: parsed.count, ...stats })
       setComposerEnabled(false)
       onPulseRefresh()
     } catch (e: unknown) {

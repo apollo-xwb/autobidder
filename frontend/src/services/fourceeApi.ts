@@ -34,10 +34,84 @@ function headers(settings: FourceeSettings) {
 export async function postFourceeJson<T = unknown>(
   settings: FourceeSettings,
   url: string,
-  body: unknown
+  body: unknown,
+  opts?: { timeoutMs?: number }
 ): Promise<T> {
-  const res = await axios.post<T>(url, body, { headers: headers(settings) })
+  const res = await axios.post<T>(url, body, {
+    headers: headers(settings),
+    timeout: opts?.timeoutMs ?? 30_000,
+  })
   return res.data
+}
+
+const SCRAPER_API_BASE =
+  typeof import.meta.env.VITE_SCRAPER_CALLBACK_BASE === 'string' &&
+  import.meta.env.VITE_SCRAPER_CALLBACK_BASE.trim()
+    ? import.meta.env.VITE_SCRAPER_CALLBACK_BASE.trim().replace(/\/$/, '')
+    : '/api'
+
+/** Where n8n POSTs scrape results (`callbackUrl` in m1-scrape-website body). */
+export function scraperCallbackUrl(jobId: string): string {
+  return `${SCRAPER_API_BASE}/scraper-callback/${jobId}`
+}
+
+export type ScrapeJobPoll = {
+  status: 'pending' | 'complete'
+  result?: Record<string, unknown>
+}
+
+export type ScrapeCallbackStats = {
+  query?: string
+  target?: number
+  newCount?: number
+  dupCount?: number
+  total?: number
+  total_scraped?: number
+  _no_leads?: boolean
+  error?: boolean
+  message?: string
+}
+
+export async function pollScrapeJob(
+  jobId: string,
+  opts?: { intervalMs?: number; timeoutMs?: number }
+): Promise<ScrapeCallbackStats> {
+  const intervalMs = opts?.intervalMs ?? 3000
+  const timeoutMs = opts?.timeoutMs ?? 5 * 60 * 1000
+  const deadline = Date.now() + timeoutMs
+  const url = `${SCRAPER_API_BASE}/scraper-callback/${jobId}`
+
+  while (Date.now() < deadline) {
+    const res = await axios.get<ScrapeJobPoll>(url, { timeout: 15_000 })
+    if (res.data?.status === 'complete' && res.data.result) {
+      return res.data.result as ScrapeCallbackStats
+    }
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+  throw new Error('Scrape timed out waiting for results. Check that the API server is reachable from n8n.')
+}
+
+/** User-facing summary aligned with Telegram “Scrape Complete” copy. */
+export function formatScrapeResultMessage(
+  query: string,
+  target: number,
+  raw: ScrapeCallbackStats
+): string {
+  if (raw.error) {
+    return `❌ **Scrape failed**\n\n${raw.message || 'The workflow reported an error. Check n8n.'}`
+  }
+  if (raw._no_leads) {
+    const scraped = raw.total_scraped ?? 0
+    return `⚠️ **Scrape finished — no leads found**\n\nQuery: _${query}_\nTarget: ${target}\n\nScraped ${scraped} businesses but none had usable websites. Try a different query.`
+  }
+  const newCount = num(raw.newCount)
+  const dupCount = num(raw.dupCount)
+  const total = num(raw.total) || newCount + dupCount
+  if (total === 0) {
+    return `⚠️ **Scrape finished — no qualified leads found**\n\nQuery: _${query}_\nTarget: ${target}\n\nNo emails were found on any business websites.`
+  }
+  const icon = total >= target ? '✅' : '⚠️'
+  return `${icon} **Scrape complete**\n\nQuery: _${query}_\n\n📥 Leads processed: **${total}** / ${target} target\n🆕 New leads added: **${newCount}**\n🔄 Already in DB: **${dupCount}**\n\nNew leads are ready for outreach.`
 }
 
 function num(v: unknown): number {

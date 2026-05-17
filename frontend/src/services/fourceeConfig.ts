@@ -2,7 +2,8 @@
 export const FOURCEE_WEBHOOK_PATHS = {
   // Your dev’s consolidated campaign launcher endpoint
   launchOutreach: 'm1-campaign',
-  leadScrape: 'm1-scrape',
+  /** Async website scrape — returns immediately; results POST to `callbackUrl`. */
+  leadScrapeWebsite: 'm1-scrape-website',
   demoGenerator: 'ae0a5a25-5238-4779-8efd-d9b98188fc45',
 } as const
 
@@ -11,7 +12,7 @@ const STORAGE_KEY = 'fourcee:settings:v2'
 export type FourceeSettings = {
   webhookBase: string
   bearerToken?: string
-  /** Passed to scrape webhook (`m1-scrape`) so Telegram acknowledgements still route somewhere sensible. */
+  /** Optional — n8n can still ping Telegram when a website scrape finishes. */
   telegramChatId?: string
 }
 
